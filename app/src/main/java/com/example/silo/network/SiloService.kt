@@ -1,16 +1,19 @@
 package com.example.silo.network
 
 import android.content.Context
-import android.net.Uri
 import android.net.wifi.WifiManager
 import android.text.format.Formatter
-import kotlinx.coroutines.*
-import kotlinx.coroutines.flow.*
-import java.io.*
+import android.util.Log
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import android.net.Uri
 import java.net.*
-import java.security.SecureRandom
-import java.util.concurrent.ConcurrentHashMap
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
+import android.os.Build
+import kotlin.concurrent.thread
 
 // ══════════════════════════════════════════════════════════
 // Data Models
@@ -27,7 +30,7 @@ data class PairRequest(
 data class FileQueueItem(val name: String, val size: Long, val uri: Uri)
 
 enum class TransferDirection { SEND, RECEIVE }
-enum class TransferStatus { PENDING, IN_PROGRESS, COMPLETE, ERROR }
+enum class TransferStatus    { PENDING, IN_PROGRESS, COMPLETE, ERROR }
 
 data class TransferInfo(
     val id:               String,
@@ -36,30 +39,32 @@ data class TransferInfo(
     val fileName:         String,
     val totalBytes:       Long,
     val bytesTransferred: Long = 0,
-    val progress:         Int = 0,
+    val progress:         Int  = 0,
     val direction:        TransferDirection,
     val status:           TransferStatus = TransferStatus.PENDING
 )
 
 data class SiloUiState(
-    val deviceName:        String = "",
-    val localIP:           String = "",
-    val isListening:       Boolean = false,
-    val connectedSession:  String? = null,
+    val deviceName:         String  = "",
+    val localIP:            String  = "",
+    val isListening:        Boolean = false,
+    val connectedSession:   String? = null,
     val pendingPairRequest: PairRequest? = null,
-    val activeTransfers:   List<TransferInfo> = emptyList(),
-    val completedTransfers: List<TransferInfo> = emptyList(),
-    val pendingSendFiles:  List<FileQueueItem> = emptyList()
+    val activeTransfers:    List<TransferInfo>  = emptyList(),
+    val completedTransfers: List<TransferInfo>  = emptyList(),
+    val pendingSendFiles:   List<FileQueueItem> = emptyList()
 )
 
 // ══════════════════════════════════════════════════════════
-// Protocol Constants
+// Protocol
 // ══════════════════════════════════════════════════════════
 
 object SiloProtocol {
     const val PORT_DISCOVERY = 41234
     const val PORT_ANDROID   = 41236
     const val PORT_DESKTOP   = 41235
+    const val CHUNK_SIZE     = 60 * 1024
+    const val MAX_RETRIES    = 5
 
     const val DISCOVER       = "SILO_DISCOVER"
     const val HELLO          = "SILO_HELLO"
@@ -70,498 +75,391 @@ object SiloProtocol {
     const val TRANSFER_ACK   = "SILO_XFER_ACK"
     const val CHUNK          = "SILO_CHUNK"
     const val ACK            = "SILO_ACK"
-    const val NACK           = "SILO_NACK"
     const val DONE           = "SILO_DONE"
     const val PING           = "SILO_PING"
     const val PONG           = "SILO_PONG"
     const val DISCONNECT     = "SILO_DISCONNECT"
 
-    const val CHUNK_SIZE     = 60 * 1024   // 60KB
-    const val WINDOW_SIZE    = 8
-    const val ACK_TIMEOUT_MS = 2_000L
-    const val MAX_RETRIES    = 5
-
     fun generatePin(): String = (100000..999999).random().toString()
 }
 
 // ══════════════════════════════════════════════════════════
-// Silo Service — orchestrates all networking
+// Silo Service  —  plain Thread-based, no coroutines
 // ══════════════════════════════════════════════════════════
 
 class SiloService(private val context: Context) {
 
-    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    companion object { private const val TAG = "SiloService" }
 
     private val _uiState = MutableStateFlow(SiloUiState())
     val uiState: StateFlow<SiloUiState> = _uiState.asStateFlow()
 
-    // Network sockets
-    private var discoverySocket: DatagramSocket? = null
-    private var transferSocket:  DatagramSocket? = null
+    // Sockets
+    @Volatile private var discoverySocket: DatagramSocket? = null
+    @Volatile private var transferSocket:  DatagramSocket? = null
 
-    // MulticastLock — required on Android so the Wi-Fi chip doesn't
-    // silently drop UDP broadcast packets before they reach the app.
-    private val wifiManager: WifiManager by lazy {
-        context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
-    }
-    private val multicastLock: WifiManager.MulticastLock by lazy {
-        wifiManager.createMulticastLock("silo_discovery").apply { setReferenceCounted(true) }
-    }
+    // Running flag
+    @Volatile private var running = false
 
-    // Session state
-    private var sessionId:     String? = null
-    private var desktopIP:     String? = null
-    private var desktopPort:   Int?    = null
-    private var currentPin:    String? = null
+    // Session
+    @Volatile private var sessionId:   String? = null
+    @Volatile private var desktopIP:   String? = null
+    @Volatile private var desktopPort: Int?    = null
 
-    // Inbound transfer state
     private val inboundTransfers = ConcurrentHashMap<String, InboundTransfer>()
 
-    // ── Public API ────────────────────────────────────────
+    // MulticastLock so Wi-Fi chip doesn't drop broadcast packets
+    private val multicastLock: WifiManager.MulticastLock by lazy {
+        val wm = context.applicationContext
+            .getSystemService(Context.WIFI_SERVICE) as WifiManager
+        wm.createMulticastLock("silo").apply { setReferenceCounted(true) }
+    }
+
+    // ── Start / Stop ──────────────────────────────────────
 
     fun start() {
-        // Acquire multicast lock so broadcast UDP packets aren't dropped by the Wi-Fi driver
-        if (!multicastLock.isHeld) multicastLock.acquire()
+        if (running) { Log.w(TAG, "Already running"); return }
+        running = true
+        Log.d(TAG, "=== SiloService.start() ===")
 
-        val ip   = getLocalIpAddress()
-        val name = android.os.Build.MODEL
+        // Acquire multicast lock
+        try {
+            if (!multicastLock.isHeld) multicastLock.acquire()
+            Log.d(TAG, "MulticastLock acquired")
+        } catch (e: Exception) {
+            Log.e(TAG, "MulticastLock failed: ${e.message}")
+        }
 
+        val ip   = getLocalIp()
+        val name = Build.MODEL
+        Log.d(TAG, "Device: $name  IP: $ip")
         _uiState.update { it.copy(deviceName = name, localIP = ip, isListening = true) }
 
-        scope.launch { listenForDiscovery(name, ip) }
-        scope.launch { listenForTransfer() }
+        // Start two daemon threads — no coroutines, no complexity
+        thread("silo-discovery") { runDiscovery(name, ip) }
+        thread("silo-transfer")  { runTransfer() }
     }
 
     fun stop() {
-        scope.cancel()
-        discoverySocket?.close()
-        transferSocket?.close()
-        if (multicastLock.isHeld) multicastLock.release()
+        Log.d(TAG, "stop()")
+        running = false
+        try { discoverySocket?.close() } catch (_: Exception) {}
+        try { transferSocket?.close()  } catch (_: Exception) {}
+        try { if (multicastLock.isHeld) multicastLock.release() } catch (_: Exception) {}
     }
 
     fun acceptPairing(req: PairRequest) {
         sessionId   = req.sessionId
         desktopIP   = req.desktopIP
         desktopPort = req.desktopPort
-
-        sendText(SiloProtocol.buildPairAck(req.sessionId), req.desktopIP, req.desktopPort)
-
-        _uiState.update { it.copy(
-            pendingPairRequest = null,
-            connectedSession   = req.sessionId
-        ) }
-
-        // Start keepalive
-        scope.launch { keepalive(req.sessionId) }
+        sendViaTransfer("${SiloProtocol.PAIR_ACK}|${req.sessionId}", req.desktopIP, req.desktopPort)
+        _uiState.update { it.copy(pendingPairRequest = null, connectedSession = req.sessionId) }
+        thread("silo-keepalive") { runKeepalive(req.sessionId) }
     }
 
     fun denyPairing(req: PairRequest) {
-        sendText(SiloProtocol.buildPairDeny(req.sessionId, "rejected"), req.desktopIP, req.desktopPort)
+        sendViaTransfer("${SiloProtocol.PAIR_DENY}|${req.sessionId}|rejected", req.desktopIP, req.desktopPort)
         _uiState.update { it.copy(pendingPairRequest = null) }
     }
 
     fun sendFile(uri: Uri) {
-        val session = sessionId ?: run {
-            return
-        }
-        scope.launch {
+        val sid = sessionId ?: return
+        thread("silo-send") {
             try {
-                val cr       = context.contentResolver
-                val cursor   = cr.query(uri, null, null, null, null)
-                val nameIdx  = cursor?.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME) ?: -1
-                val sizeIdx  = cursor?.getColumnIndex(android.provider.OpenableColumns.SIZE) ?: -1
+                val cr      = context.contentResolver
+                val cursor  = cr.query(uri, null, null, null, null)
                 cursor?.moveToFirst()
-                val fileName = cursor?.getString(nameIdx) ?: uri.lastPathSegment ?: "file"
-                val fileSize = cursor?.getLong(sizeIdx) ?: 0L
+                val nameIdx = cursor?.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME) ?: -1
+                val sizeIdx = cursor?.getColumnIndex(android.provider.OpenableColumns.SIZE)         ?: -1
+                val name    = if (nameIdx >= 0) cursor?.getString(nameIdx) else uri.lastPathSegment ?: "file"
+                val size    = if (sizeIdx >= 0) cursor?.getLong(sizeIdx)   else 0L
                 cursor?.close()
-
-                // Add to queue display
-                val item = FileQueueItem(name = fileName, size = fileSize, uri = uri)
-                _uiState.update { it.copy(pendingSendFiles = it.pendingSendFiles + item) }
-
-                // Send
-                sendFileUDP(uri, fileName, fileSize, session)
-
-                // Remove from queue
+                _uiState.update { it.copy(pendingSendFiles = it.pendingSendFiles +
+                    FileQueueItem(name ?: "file", size ?: 0L, uri)) }
+                sendFileUDP(uri, name ?: "file", size ?: 0L, sid)
                 _uiState.update { it.copy(pendingSendFiles = it.pendingSendFiles.filterNot { q -> q.uri == uri }) }
-
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
+            } catch (e: Exception) { Log.e(TAG, "sendFile error: ${e.message}", e) }
         }
     }
 
-    // ── Discovery Listener ────────────────────────────────
+    // ── Discovery Thread ──────────────────────────────────
 
-    private suspend fun listenForDiscovery(deviceName: String, localIP: String) {
-        android.util.Log.d("SiloDiscovery", "Starting discovery listener on port ${SiloProtocol.PORT_DISCOVERY}")
+    private fun runDiscovery(deviceName: String, localIP: String) {
+        Log.d(TAG, "Discovery thread started")
         try {
-            // Use DatagramSocket(port) — the most reliable way to receive broadcasts on Android.
-            // DatagramSocket(null)+bind() can silently bind only to localhost on some devices.
-            val socket = DatagramSocket(SiloProtocol.PORT_DISCOVERY)
-            socket.reuseAddress = true
-            socket.soTimeout = 0
-            socket.broadcast = true
-            discoverySocket = socket
-
-            android.util.Log.d("SiloDiscovery", "Socket bound successfully. localAddress=${socket.localAddress} localPort=${socket.localPort}")
+            val sock = DatagramSocket(SiloProtocol.PORT_DISCOVERY)
+            sock.broadcast = true
+            sock.soTimeout = 0
+            discoverySocket = sock
+            Log.d(TAG, "Discovery socket bound on port ${SiloProtocol.PORT_DISCOVERY}  local=${sock.localAddress}")
 
             val buf = ByteArray(4096)
-            while (scope.isActive) {
+            while (running) {
                 val pkt = DatagramPacket(buf, buf.size)
                 try {
-                    socket.receive(pkt)
+                    sock.receive(pkt)
                     val msg      = String(pkt.data, 0, pkt.length).trim()
-                    val senderIP = pkt.address.hostAddress ?: continue
+                    val senderIP = pkt.address?.hostAddress ?: continue
+                    Log.d(TAG, "Discovery RX from $senderIP: ${msg.take(80)}")
 
-                    android.util.Log.d("SiloDiscovery", "Packet from $senderIP: ${msg.take(80)}")
-
-                    // Ignore loopback
                     if (senderIP.startsWith("127.")) continue
 
                     if (msg.startsWith(SiloProtocol.DISCOVER)) {
-                        val parts = msg.split("|")
-                        if (parts.size >= 3) {
-                            val desktopName = parts[1]
-                            val freshIP     = getLocalIpAddress()
-                            val hello       = SiloProtocol.buildHello(deviceName, freshIP)
-                            val hBuf        = hello.toByteArray()
-                            // Reply directly to the sender on the discovery port
-                            val resp = DatagramPacket(hBuf, hBuf.size,
-                                InetAddress.getByName(senderIP), SiloProtocol.PORT_DISCOVERY)
-                            socket.send(resp)
-                            android.util.Log.d("SiloDiscovery",
-                                "✓ Replied HELLO to $senderIP (desktop=$desktopName, myIP=$freshIP)")
-                        }
+                        val myIP  = getLocalIp()
+                        val hello = "${SiloProtocol.HELLO}|$deviceName|$myIP|${SiloProtocol.PORT_ANDROID}"
+                        val hBuf  = hello.toByteArray()
+                        sock.send(DatagramPacket(hBuf, hBuf.size,
+                            InetAddress.getByName(senderIP), SiloProtocol.PORT_DISCOVERY))
+                        Log.d(TAG, "Replied HELLO to $senderIP  myIP=$myIP")
                     }
-                } catch (e: SocketTimeoutException) {
-                    // normal — continue
+                } catch (e: SocketException) {
+                    if (!running) break else Log.e(TAG, "Discovery recv error: ${e.message}")
                 } catch (e: Exception) {
-                    if (scope.isActive) e.printStackTrace()
+                    Log.e(TAG, "Discovery error: ${e.message}", e)
                 }
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "Discovery socket FAILED to bind: ${e.message}", e)
         }
+        Log.d(TAG, "Discovery thread exited")
     }
 
-    // ── Transfer Listener ─────────────────────────────────
+    // ── Transfer / Pairing Thread ─────────────────────────
 
-    private suspend fun listenForTransfer() {
+    private fun runTransfer() {
+        Log.d(TAG, "Transfer thread started")
         try {
-            val socket = DatagramSocket(null).apply {
-                reuseAddress = true
-                bind(InetSocketAddress(SiloProtocol.PORT_ANDROID))
-                soTimeout = 0
-            }
-            transferSocket = socket
+            val sock = DatagramSocket(SiloProtocol.PORT_ANDROID)
+            sock.broadcast = true
+            sock.soTimeout = 0
+            transferSocket = sock
+            Log.d(TAG, "Transfer socket bound on port ${SiloProtocol.PORT_ANDROID}")
 
-            val buf = ByteArray(70 * 1024)  // slightly larger than max chunk
-            while (scope.isActive) {
+            val buf = ByteArray(70 * 1024)
+            while (running) {
                 val pkt = DatagramPacket(buf, buf.size)
                 try {
-                    socket.receive(pkt)
-                    handleTransferPacket(pkt)
-                } catch (e: SocketTimeoutException) {
-                    // continue
+                    sock.receive(pkt)
+                    handleTransferPacket(pkt, sock)
+                } catch (e: SocketException) {
+                    if (!running) break else Log.e(TAG, "Transfer recv error: ${e.message}")
                 } catch (e: Exception) {
-                    if (scope.isActive) e.printStackTrace()
+                    Log.e(TAG, "Transfer error: ${e.message}", e)
                 }
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e(TAG, "Transfer socket FAILED to bind: ${e.message}", e)
         }
+        Log.d(TAG, "Transfer thread exited")
     }
 
-    private fun handleTransferPacket(pkt: DatagramPacket) {
-        val data = pkt.data.copyOf(pkt.length)
-        val from = pkt.address.hostAddress ?: return
+    private fun handleTransferPacket(pkt: DatagramPacket, sock: DatagramSocket) {
+        val data     = pkt.data.copyOf(pkt.length)
+        val fromIP   = pkt.address?.hostAddress ?: return
         val fromPort = pkt.port
 
-        // Try chunk (binary with \n separator)
+        // Binary chunk (header ends at first \n)
         val newlineIdx = data.indexOf('\n'.code.toByte())
         if (newlineIdx != -1) {
             val header = String(data, 0, newlineIdx)
             val parts  = header.split("|")
-            if (parts.isNotEmpty() && parts[0] == SiloProtocol.CHUNK && parts.size >= 5) {
-                val sessionId   = parts[1]
-                val fileId      = parts[2]
-                val chunkIndex  = parts[3].toIntOrNull() ?: return
-                val totalChunks = parts[4].toIntOrNull() ?: return
-                val chunkData   = data.copyOfRange(newlineIdx + 1, data.size)
-
-                handleChunk(sessionId, fileId, chunkIndex, totalChunks, chunkData)
-
-                // Send ACK
-                val ack = SiloProtocol.buildChunkAck(sessionId, fileId, chunkIndex)
-                sendText(ack, from, fromPort)
+            if (parts.getOrNull(0) == SiloProtocol.CHUNK && parts.size >= 5) {
+                val sid    = parts[1]; val fid = parts[2]
+                val idx    = parts[3].toIntOrNull() ?: return
+                val total  = parts[4].toIntOrNull() ?: return
+                val chunk  = data.copyOfRange(newlineIdx + 1, data.size)
+                onChunk(sid, fid, idx, total, chunk)
+                val ack = "${SiloProtocol.ACK}|$sid|$fid|$idx".toByteArray()
+                sock.send(DatagramPacket(ack, ack.size, pkt.address, fromPort))
                 return
             }
         }
 
-        // Text messages
         val msg   = String(data).trim()
         val parts = msg.split("|")
-        when (parts[0]) {
+        when (parts.getOrNull(0)) {
             SiloProtocol.PAIR_REQ -> {
                 if (parts.size >= 4) {
-                    val sId  = parts[1]
-                    val name = parts[2]
-                    val pin  = parts[3]
-
-                    // Generate a pin for this session and display it
-                    val myPin = SiloProtocol.generatePin()
-                    currentPin = myPin
-
-                    val req = PairRequest(
-                        sessionId   = sId,
-                        desktopName = name,
-                        desktopIP   = from,
-                        desktopPort = fromPort,
-                        pin         = myPin
-                    )
-
-                    // Check if the desktop provided a PIN that matches ours
-                    if (pin == myPin) {
-                        _uiState.update { it.copy(pendingPairRequest = req) }
-                    } else {
-                        // Show the request with our generated PIN for user to verify
-                        _uiState.update { it.copy(pendingPairRequest = req) }
-                    }
+                    val pin = parts[3]  // Use the PIN sent by the desktop, not a freshly generated one
+                    val req = PairRequest(parts[1], parts[2], fromIP, fromPort, pin)
+                    Log.d(TAG, "Pair request from $fromIP  desktop=${parts[2]}  pin=$pin")
+                    _uiState.update { it.copy(pendingPairRequest = req) }
                 }
             }
-
             SiloProtocol.TRANSFER_START -> {
-                if (parts.size >= 7) {
-                    val sId         = parts[1]
-                    val fileId      = parts[2]
-                    val fileName    = java.net.URLDecoder.decode(parts[3], "UTF-8")
-                    val fileSize    = parts[4].toLongOrNull() ?: 0L
-                    val totalChunks = parts[5].toIntOrNull() ?: 1
-
-                    val key = "$sId:$fileId"
+                if (parts.size >= 6) {
+                    val key = "${parts[1]}:${parts[2]}"
                     inboundTransfers[key] = InboundTransfer(
-                        sessionId    = sId,
-                        fileId       = fileId,
-                        fileName     = fileName,
-                        fileSize     = fileSize,
-                        totalChunks  = totalChunks,
+                        sessionId    = parts[1],
+                        fileId       = parts[2],
+                        fileName     = decodeUrl(parts[3]),
+                        fileSize     = parts[4].toLongOrNull() ?: 0L,
+                        totalChunks  = parts[5].toIntOrNull() ?: 1,
                         chunks       = ConcurrentHashMap()
                     )
-
-                    // Update UI
-                    addActiveTransfer(TransferInfo(
-                        id = key, sessionId = sId, fileId = fileId,
-                        fileName = fileName, totalBytes = fileSize,
-                        direction = TransferDirection.RECEIVE, status = TransferStatus.IN_PROGRESS
-                    ))
-
-                    // ACK
-                    val ack = "${SiloProtocol.TRANSFER_ACK}|$sId|$fileId"
-                    sendText(ack, from, fromPort)
+                    addTransfer(TransferInfo(key, parts[1], parts[2], decodeUrl(parts[3]),
+                        parts[4].toLongOrNull() ?: 0L, direction = TransferDirection.RECEIVE,
+                        status = TransferStatus.IN_PROGRESS))
+                    val ack = "${SiloProtocol.TRANSFER_ACK}|${parts[1]}|${parts[2]}".toByteArray()
+                    sock.send(DatagramPacket(ack, ack.size, pkt.address, fromPort))
                 }
             }
-
             SiloProtocol.DONE -> {
-                if (parts.size >= 3) {
-                    val sId    = parts[1]
-                    val fileId = parts[2]
-                    val key    = "$sId:$fileId"
-                    val t      = inboundTransfers.remove(key) ?: return
-                    scope.launch { assembleFile(t, key) }
-                }
+                val key = "${parts.getOrElse(1){""}}:${parts.getOrElse(2){""}}"
+                inboundTransfers.remove(key)?.let { assembleFile(it, key) }
             }
-
             SiloProtocol.PING -> {
-                if (parts.size >= 2) sendText(SiloProtocol.buildPong(parts[1]), from, fromPort)
+                val pong = "${SiloProtocol.PONG}|${parts.getOrElse(1){""}}" .toByteArray()
+                sock.send(DatagramPacket(pong, pong.size, pkt.address, fromPort))
             }
-
-            SiloProtocol.PONG -> { /* keepalive ok */ }
-
             SiloProtocol.DISCONNECT -> {
-                sessionId   = null
-                desktopIP   = null
-                desktopPort = null
+                sessionId = null; desktopIP = null; desktopPort = null
                 _uiState.update { it.copy(connectedSession = null) }
             }
         }
     }
 
-    private fun handleChunk(sessionId: String, fileId: String, chunkIndex: Int, totalChunks: Int, data: ByteArray) {
-        val key = "$sessionId:$fileId"
+    private fun onChunk(sid: String, fid: String, idx: Int, total: Int, data: ByteArray) {
+        val key = "$sid:$fid"
         val t   = inboundTransfers[key] ?: return
-        t.chunks[chunkIndex] = data.copyOf()
-
+        t.chunks[idx] = data.copyOf()
         val progress = (t.chunks.size * 100) / t.totalChunks
-        updateTransferProgress(key, t.chunks.size * SiloProtocol.CHUNK_SIZE.toLong(), progress)
+        updateProgress(key, t.chunks.size.toLong() * SiloProtocol.CHUNK_SIZE, progress)
     }
 
-    // ── File Sending ──────────────────────────────────────
+    // ── File Send ─────────────────────────────────────────
 
-    private suspend fun sendFileUDP(uri: Uri, fileName: String, fileSize: Long, session: String) {
-        val fileId      = UUID.randomUUID().toString().take(8)
-        val totalChunks = ((fileSize + SiloProtocol.CHUNK_SIZE - 1) / SiloProtocol.CHUNK_SIZE).toInt().coerceAtLeast(1)
-        val key         = "$session:$fileId"
-
+    private fun sendFileUDP(uri: Uri, fileName: String, fileSize: Long, sid: String) {
+        val fid   = UUID.randomUUID().toString().take(8)
+        val total = ((fileSize + SiloProtocol.CHUNK_SIZE - 1) / SiloProtocol.CHUNK_SIZE).toInt().coerceAtLeast(1)
+        val key   = "$sid:$fid"
         val dIP   = desktopIP   ?: return
         val dPort = desktopPort ?: return
 
-        addActiveTransfer(TransferInfo(
-            id = key, sessionId = session, fileId = fileId,
-            fileName = fileName, totalBytes = fileSize,
-            direction = TransferDirection.SEND, status = TransferStatus.IN_PROGRESS
-        ))
+        addTransfer(TransferInfo(key, sid, fid, fileName, fileSize,
+            direction = TransferDirection.SEND, status = TransferStatus.IN_PROGRESS))
 
-        // Announce
-        val startMsg = "${SiloProtocol.TRANSFER_START}|$session|$fileId|${java.net.URLEncoder.encode(fileName,"UTF-8")}|$fileSize|$totalChunks|application%2Foctet-stream"
-        sendText(startMsg, dIP, dPort)
+        val startMsg = "${SiloProtocol.TRANSFER_START}|$sid|$fid|${java.net.URLEncoder.encode(fileName,"UTF-8")}|$fileSize|$total|application%2Foctet-stream"
+        sendViaTransfer(startMsg, dIP, dPort)
+        Thread.sleep(500)
 
-        // Wait for XFER_ACK (simple polling for 5s)
-        delay(500)
+        val stream = context.contentResolver.openInputStream(uri) ?: return
+        val buf    = ByteArray(SiloProtocol.CHUNK_SIZE)
+        var idx    = 0; var sent = 0L
 
-        val inputStream = context.contentResolver.openInputStream(uri) ?: return
-        val buf = ByteArray(SiloProtocol.CHUNK_SIZE)
-        var chunkIndex = 0
-        var bytesSent  = 0L
-
-        try {
-            inputStream.use { stream ->
-                while (true) {
-                    val read = stream.read(buf)
-                    if (read == -1) break
-
-                    val chunkData = buf.copyOf(read)
-                    val header    = "${SiloProtocol.CHUNK}|$session|$fileId|$chunkIndex|$totalChunks|\n"
-                    val headerBuf = header.toByteArray()
-                    val packet    = headerBuf + chunkData
-
-                    // Send with retry
-                    var sent = false
-                    for (attempt in 0 until SiloProtocol.MAX_RETRIES) {
-                        sendRaw(packet, dIP, dPort)
-                        delay(20) // small delay between chunks
-                        sent = true
-                        break
-                    }
-
-                    bytesSent += read
-                    val progress = ((bytesSent * 100) / fileSize).toInt()
-                    updateTransferProgress(key, bytesSent, progress)
-                    chunkIndex++
-                }
+        stream.use {
+            while (true) {
+                val read = it.read(buf)
+                if (read == -1) break
+                val header = "${SiloProtocol.CHUNK}|$sid|$fid|$idx|$total|\n".toByteArray()
+                val packet = header + buf.copyOf(read)
+                sendRaw(packet, dIP, dPort)
+                Thread.sleep(5) // small pacing delay
+                sent += read
+                updateProgress(key, sent, ((sent * 100) / fileSize).toInt())
+                idx++
             }
-        } finally {
-            // Send DONE
-            val done = "${SiloProtocol.DONE}|$session|$fileId"
-            sendText(done, dIP, dPort)
-
-            completeTransfer(key)
         }
+
+        sendViaTransfer("${SiloProtocol.DONE}|$sid|$fid", dIP, dPort)
+        completeTransfer(key, fileName, fileSize)
     }
 
     // ── File Assembly ─────────────────────────────────────
 
-    private suspend fun assembleFile(t: InboundTransfer, key: String) {
-        withContext(Dispatchers.IO) {
+    private fun assembleFile(t: InboundTransfer, key: String) {
+        thread("silo-assemble") {
             try {
-                val dir = android.os.Environment.getExternalStoragePublicDirectory(
-                    android.os.Environment.DIRECTORY_DOWNLOADS
-                )
-                val file = File(dir, "Silo_${t.fileName}")
-
-                val fos = FileOutputStream(file)
-                for (i in 0 until t.totalChunks) {
-                    val chunk = t.chunks[i]
-                    if (chunk != null) fos.write(chunk)
-                }
+                val dir  = android.os.Environment.getExternalStoragePublicDirectory(
+                    android.os.Environment.DIRECTORY_DOWNLOADS)
+                val file = java.io.File(dir, "Silo_${t.fileName}")
+                val fos  = java.io.FileOutputStream(file)
+                for (i in 0 until t.totalChunks) fos.write(t.chunks[i] ?: ByteArray(0))
                 fos.close()
-
-                // Notify media scanner
-                android.media.MediaScannerConnection.scanFile(
-                    context, arrayOf(file.absolutePath), null, null
-                )
-
-                completeTransfer(key)
+                android.media.MediaScannerConnection.scanFile(context, arrayOf(file.absolutePath), null, null)
+                Log.d(TAG, "Saved: ${file.absolutePath}")
+                completeTransfer(key, t.fileName, t.fileSize)
             } catch (e: Exception) {
-                e.printStackTrace()
+                Log.e(TAG, "assemble error: ${e.message}", e)
             }
         }
     }
 
     // ── Keepalive ─────────────────────────────────────────
 
-    private suspend fun keepalive(session: String) {
-        while (scope.isActive && sessionId == session) {
-            delay(5000)
+    private fun runKeepalive(sid: String) {
+        while (running && sessionId == sid) {
+            Thread.sleep(5000)
             val ip   = desktopIP   ?: break
             val port = desktopPort ?: break
-            sendText(SiloProtocol.buildPing(session), ip, port)
+            sendViaTransfer("${SiloProtocol.PING}|$sid", ip, port)
         }
     }
 
-    // ── Utilities ─────────────────────────────────────────
+    // ── Send Helpers ──────────────────────────────────────
 
-    private fun sendText(msg: String, ip: String, port: Int) {
+    private fun sendViaTransfer(msg: String, ip: String, port: Int) {
         try {
             val buf = msg.toByteArray()
-            val pkt = DatagramPacket(buf, buf.size, InetAddress.getByName(ip), port)
-            (transferSocket ?: discoverySocket)?.send(pkt)
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+            transferSocket?.send(DatagramPacket(buf, buf.size, InetAddress.getByName(ip), port))
+                ?: discoverySocket?.send(DatagramPacket(buf, buf.size, InetAddress.getByName(ip), port))
+        } catch (e: Exception) { Log.e(TAG, "send error: ${e.message}") }
     }
 
     private fun sendRaw(data: ByteArray, ip: String, port: Int) {
         try {
-            val pkt = DatagramPacket(data, data.size, InetAddress.getByName(ip), port)
-            transferSocket?.send(pkt)
-        } catch (e: Exception) {
-            e.printStackTrace()
+            transferSocket?.send(DatagramPacket(data, data.size, InetAddress.getByName(ip), port))
+        } catch (e: Exception) { Log.e(TAG, "sendRaw error: ${e.message}") }
+    }
+
+    // ── State Helpers ─────────────────────────────────────
+
+    private fun addTransfer(info: TransferInfo) {
+        _uiState.update { it.copy(activeTransfers = it.activeTransfers + info) }
+    }
+    private fun updateProgress(key: String, bytes: Long, progress: Int) {
+        _uiState.update { s -> s.copy(activeTransfers = s.activeTransfers.map {
+            if (it.id == key) it.copy(bytesTransferred = bytes, progress = progress,
+                status = TransferStatus.IN_PROGRESS) else it }) }
+    }
+    private fun completeTransfer(key: String, name: String, size: Long) {
+        _uiState.update { s ->
+            val t = s.activeTransfers.find { it.id == key }
+                ?.copy(status = TransferStatus.COMPLETE, progress = 100, bytesTransferred = size)
+            s.copy(activeTransfers   = s.activeTransfers.filterNot { it.id == key },
+                   completedTransfers = if (t != null) listOf(t) + s.completedTransfers else s.completedTransfers)
         }
     }
 
-    private fun getLocalIpAddress(): String {
+    // ── IP Detection ──────────────────────────────────────
+
+    fun getLocalIp(): String {
         return try {
             val wm = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
             @Suppress("DEPRECATION")
-            Formatter.formatIpAddress(wm.connectionInfo.ipAddress)
-        } catch (e: Exception) {
-            try {
-                NetworkInterface.getNetworkInterfaces().toList()
-                    .flatMap { it.inetAddresses.toList() }
-                    .firstOrNull { it is Inet4Address && !it.isLoopbackAddress }
-                    ?.hostAddress ?: "unknown"
-            } catch (e2: Exception) { "unknown" }
-        }
+            val ip = wm.connectionInfo.ipAddress
+            if (ip == 0) fallbackIp() else Formatter.formatIpAddress(ip)
+        } catch (e: Exception) { fallbackIp() }
     }
 
-    private fun addActiveTransfer(info: TransferInfo) {
-        _uiState.update { it.copy(activeTransfers = it.activeTransfers + info) }
+    private fun fallbackIp(): String {
+        return try {
+            NetworkInterface.getNetworkInterfaces().toList()
+                .flatMap { it.inetAddresses.toList() }
+                .filterIsInstance<Inet4Address>()
+                .firstOrNull { !it.isLoopbackAddress }
+                ?.hostAddress ?: "unknown"
+        } catch (e: Exception) { "unknown" }
     }
 
-    private fun updateTransferProgress(key: String, bytes: Long, progress: Int) {
-        _uiState.update { state ->
-            state.copy(activeTransfers = state.activeTransfers.map { t ->
-                if (t.id == key) t.copy(bytesTransferred = bytes, progress = progress, status = TransferStatus.IN_PROGRESS)
-                else t
-            })
-        }
-    }
+    // ── Utility ───────────────────────────────────────────
 
-    private fun completeTransfer(key: String) {
-        _uiState.update { state ->
-            val transfer = state.activeTransfers.find { it.id == key }
-            val completed = transfer?.copy(
-                status = TransferStatus.COMPLETE,
-                progress = 100,
-                bytesTransferred = transfer.totalBytes
-            )
-            state.copy(
-                activeTransfers   = state.activeTransfers.filterNot { it.id == key },
-                completedTransfers = if (completed != null) listOf(completed) + state.completedTransfers else state.completedTransfers
-            )
-        }
-    }
+    private fun thread(name: String, block: () -> Unit): Thread =
+        Thread(block, name).also { it.isDaemon = true; it.start() }
+
+    private fun decodeUrl(s: String) = try {
+        java.net.URLDecoder.decode(s, "UTF-8")
+    } catch (_: Exception) { s }
 }
 
 // ══════════════════════════════════════════════════════════
@@ -578,23 +476,13 @@ data class InboundTransfer(
 )
 
 // ══════════════════════════════════════════════════════════
-// Protocol Helpers (extension functions)
+// Protocol extension helpers
 // ══════════════════════════════════════════════════════════
 
-fun SiloProtocol.buildHello(deviceName: String, deviceIP: String): String =
+fun SiloProtocol.buildHello(deviceName: String, deviceIP: String) =
     "$HELLO|$deviceName|$deviceIP|$PORT_ANDROID"
-
-fun SiloProtocol.buildPairAck(sessionId: String): String =
-    "$PAIR_ACK|$sessionId"
-
-fun SiloProtocol.buildPairDeny(sessionId: String, reason: String): String =
-    "$PAIR_DENY|$sessionId|$reason"
-
-fun SiloProtocol.buildChunkAck(sessionId: String, fileId: String, chunkIndex: Int): String =
-    "$ACK|$sessionId|$fileId|$chunkIndex"
-
-fun SiloProtocol.buildPing(sessionId: String): String =
-    "$PING|$sessionId"
-
-fun SiloProtocol.buildPong(sessionId: String): String =
-    "$PONG|$sessionId"
+fun SiloProtocol.buildPairAck(sessionId: String)  = "$PAIR_ACK|$sessionId"
+fun SiloProtocol.buildPairDeny(sessionId: String, reason: String) = "$PAIR_DENY|$sessionId|$reason"
+fun SiloProtocol.buildChunkAck(sid: String, fid: String, idx: Int) = "$ACK|$sid|$fid|$idx"
+fun SiloProtocol.buildPing(sid: String)  = "$PING|$sid"
+fun SiloProtocol.buildPong(sid: String)  = "$PONG|$sid"
