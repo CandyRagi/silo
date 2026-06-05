@@ -38,9 +38,14 @@ import androidx.lifecycle.*
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.silo.network.*
 import com.example.silo.ui.theme.SiloTheme
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.text.style.TextAlign
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import java.io.File
+
 
 class MainActivity : ComponentActivity() {
 
@@ -117,8 +122,8 @@ fun SiloApp(siloService: SiloService) {
             AnimatedVisibility(visible = uiState.pendingPairRequest != null) {
                 uiState.pendingPairRequest?.let { req ->
                     PairingBanner(
-                        req = req,
-                        onAccept = { siloService.acceptPairing(req) },
+                        req      = req,
+                        onVerify = { enteredPin -> siloService.verifyAndAcceptPairing(req, enteredPin) },
                         onDeny   = { siloService.denyPairing(req) }
                     )
                 }
@@ -258,8 +263,23 @@ fun SiloTopBar(uiState: SiloUiState) {
 // PAIRING BANNER
 // ══════════════════════════════════════════════════════════
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PairingBanner(req: PairRequest, onAccept: () -> Unit, onDeny: () -> Unit) {
+fun PairingBanner(
+    req: PairRequest,
+    onVerify: (enteredPin: String) -> Boolean,
+    onDeny: () -> Unit
+) {
+    var digits by remember { mutableStateOf(List(6) { "" }) }
+    var errorMsg by remember { mutableStateOf("") }
+
+    val focusRequesters = remember { List(6) { FocusRequester() } }
+    val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+
+    LaunchedEffect(Unit) {
+        focusRequesters[0].requestFocus()
+    }
+
     Surface(
         color = Color(0xFF1a1630),
         border = BorderStroke(1.dp, SiloColors.AccentPurple.copy(alpha = 0.5f))
@@ -278,7 +298,7 @@ fun PairingBanner(req: PairRequest, onAccept: () -> Unit, onDeny: () -> Unit) {
                 }
             }
 
-            // PIN display
+            // PIN entry area
             Surface(
                 color = Color(0xFF0e0e1a),
                 shape = RoundedCornerShape(10.dp),
@@ -287,25 +307,81 @@ fun PairingBanner(req: PairRequest, onAccept: () -> Unit, onDeny: () -> Unit) {
                 Column(
                     Modifier.fillMaxWidth().padding(14.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Text("Enter this PIN on the desktop", fontSize = 11.sp, color = SiloColors.TextSecondary)
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        req.pin.forEachIndexed { idx, digit ->
-                            if (idx == 3) Text("—", color = SiloColors.TextMuted, fontSize = 20.sp, modifier = Modifier.padding(horizontal = 2.dp))
+                    Text(
+                        "Enter the code shown on your PC",
+                        fontSize = 11.sp,
+                        color = SiloColors.TextSecondary
+                    )
+
+                    // 6 OTP digit boxes
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        digits.forEachIndexed { idx, value ->
+                            if (idx == 3) Text("—", color = SiloColors.TextMuted, fontSize = 20.sp,
+                                modifier = Modifier.padding(horizontal = 2.dp))
+
                             Surface(
-                                color  = Color(0xFF1a1a28),
+                                color  = if (errorMsg.isNotEmpty()) Color(0xFF2a0e0e) else Color(0xFF1a1a28),
                                 shape  = RoundedCornerShape(8.dp),
-                                border = BorderStroke(1.dp, SiloColors.AccentPurple.copy(alpha = 0.4f))
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (errorMsg.isNotEmpty()) SiloColors.Red.copy(alpha = 0.6f)
+                                    else if (value.isNotEmpty()) SiloColors.AccentPurple.copy(alpha = 0.7f)
+                                    else SiloColors.AccentPurple.copy(alpha = 0.3f)
+                                )
                             ) {
-                                Text(
-                                    text = digit.toString(),
-                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                                    fontSize = 24.sp, fontWeight = FontWeight.Bold,
-                                    color = SiloColors.TextPrimary
+                                BasicTextField(
+                                    value = value,
+                                    onValueChange = { new ->
+                                        val clean = new.filter { it.isDigit() }.take(1)
+                                        digits = digits.toMutableList().also { it[idx] = clean }
+                                        errorMsg = ""
+                                        if (clean.isNotEmpty() && idx < 5) {
+                                            focusRequesters[idx + 1].requestFocus()
+                                        }
+                                    },
+                                    modifier = Modifier
+                                        .width(44.dp)
+                                        .height(54.dp)
+                                        .focusRequester(focusRequesters[idx]),
+                                    textStyle = androidx.compose.ui.text.TextStyle(
+                                        fontSize = 24.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = SiloColors.TextPrimary,
+                                        textAlign = TextAlign.Center
+                                    ),
+                                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Number,
+                                        imeAction = if (idx == 5) androidx.compose.ui.text.input.ImeAction.Done
+                                                    else androidx.compose.ui.text.input.ImeAction.Next
+                                    ),
+                                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                                        onNext = { if (idx < 5) focusRequesters[idx + 1].requestFocus() },
+                                        onDone = { keyboardController?.hide() }
+                                    ),
+                                    singleLine = true,
+                                    decorationBox = { inner ->
+                                        Box(
+                                            Modifier.fillMaxSize(),
+                                            contentAlignment = Alignment.Center
+                                        ) { inner() }
+                                    }
                                 )
                             }
                         }
+                    }
+
+                    if (errorMsg.isNotEmpty()) {
+                        Text(
+                            errorMsg,
+                            fontSize = 11.sp,
+                            color = SiloColors.Red,
+                            fontWeight = FontWeight.Medium
+                        )
                     }
                 }
             }
@@ -320,11 +396,23 @@ fun PairingBanner(req: PairRequest, onAccept: () -> Unit, onDeny: () -> Unit) {
                     Text("Reject", fontWeight = FontWeight.SemiBold)
                 }
                 Button(
-                    onClick = onAccept,
+                    onClick = {
+                        val entered = digits.joinToString("")
+                        if (entered.length < 6) {
+                            errorMsg = "Enter all 6 digits"
+                            return@Button
+                        }
+                        val ok = onVerify(entered)
+                        if (!ok) {
+                            errorMsg = "Wrong code — check your PC"
+                            digits = List(6) { "" }
+                            focusRequesters[0].requestFocus()
+                        }
+                    },
                     modifier = Modifier.weight(1f),
                     colors = ButtonDefaults.buttonColors(containerColor = SiloColors.AccentPurple)
                 ) {
-                    Text("Accept", fontWeight = FontWeight.SemiBold)
+                    Text("Confirm", fontWeight = FontWeight.SemiBold)
                 }
             }
         }

@@ -148,6 +148,31 @@ class SiloService(private val context: Context) {
         try { if (multicastLock.isHeld) multicastLock.release() } catch (_: Exception) {}
     }
 
+    /** Called when the user types a PIN and taps Confirm on the phone. */
+    fun verifyAndAcceptPairing(req: PairRequest, enteredPin: String): Boolean {
+        if (enteredPin != req.pin) return false   // wrong PIN
+        sessionId   = req.sessionId
+        desktopIP   = req.desktopIP
+        desktopPort = req.desktopPort
+
+        // Send PAIR_ACK 3 times (UDP is lossy) — desktop ignores duplicates gracefully
+        val ackMsg = "${SiloProtocol.PAIR_ACK}|${req.sessionId}"
+        sendViaTransfer(ackMsg, req.desktopIP, req.desktopPort)
+        Log.d(TAG, "PAIR_ACK #1 sent to ${req.desktopIP}:${req.desktopPort}")
+        thread("silo-pair-ack-retry") {
+            Thread.sleep(1000)
+            sendViaTransfer(ackMsg, req.desktopIP, req.desktopPort)
+            Log.d(TAG, "PAIR_ACK #2 sent to ${req.desktopIP}:${req.desktopPort}")
+            Thread.sleep(1000)
+            sendViaTransfer(ackMsg, req.desktopIP, req.desktopPort)
+            Log.d(TAG, "PAIR_ACK #3 sent to ${req.desktopIP}:${req.desktopPort}")
+        }
+
+        _uiState.update { it.copy(pendingPairRequest = null, connectedSession = req.sessionId) }
+        thread("silo-keepalive") { runKeepalive(req.sessionId) }
+        return true
+    }
+
     fun acceptPairing(req: PairRequest) {
         sessionId   = req.sessionId
         desktopIP   = req.desktopIP
@@ -280,9 +305,12 @@ class SiloService(private val context: Context) {
         when (parts.getOrNull(0)) {
             SiloProtocol.PAIR_REQ -> {
                 if (parts.size >= 4) {
-                    val pin = parts[3]  // Use the PIN sent by the desktop, not a freshly generated one
-                    val req = PairRequest(parts[1], parts[2], fromIP, fromPort, pin)
-                    Log.d(TAG, "Pair request from $fromIP  desktop=${parts[2]}  pin=$pin")
+                    val pin = parts[3]  // PIN sent by the desktop
+                    // Use the explicit reply port embedded in the message (parts[4]) if present,
+                    // otherwise fall back to the UDP source port.
+                    val replyPort = parts.getOrNull(4)?.toIntOrNull() ?: fromPort
+                    val req = PairRequest(parts[1], parts[2], fromIP, replyPort, pin)
+                    Log.d(TAG, "Pair request from $fromIP:$replyPort  desktop=${parts[2]}  pin=$pin")
                     _uiState.update { it.copy(pendingPairRequest = req) }
                 }
             }
