@@ -305,11 +305,18 @@ class SiloService(private val context: Context) {
         when (parts.getOrNull(0)) {
             SiloProtocol.PAIR_REQ -> {
                 if (parts.size >= 4) {
+                    val reqSessionId = parts[1]
+                    // Ignore duplicate requests if we are already connected to this session
+                    // or if it's already the pending request (prevents UI reset while typing)
+                    if (reqSessionId == sessionId) return
+                    val currentPending = _uiState.value.pendingPairRequest
+                    if (currentPending != null && currentPending.sessionId == reqSessionId) return
+
                     val pin = parts[3]  // PIN sent by the desktop
                     // Use the explicit reply port embedded in the message (parts[4]) if present,
                     // otherwise fall back to the UDP source port.
                     val replyPort = parts.getOrNull(4)?.toIntOrNull() ?: fromPort
-                    val req = PairRequest(parts[1], parts[2], fromIP, replyPort, pin)
+                    val req = PairRequest(reqSessionId, parts[2], fromIP, replyPort, pin)
                     Log.d(TAG, "Pair request from $fromIP:$replyPort  desktop=${parts[2]}  pin=$pin")
                     _uiState.update { it.copy(pendingPairRequest = req) }
                 }
@@ -417,7 +424,7 @@ class SiloService(private val context: Context) {
 
     private fun runKeepalive(sid: String) {
         while (running && sessionId == sid) {
-            Thread.sleep(5000)
+            Thread.sleep(2000)
             val ip   = desktopIP   ?: break
             val port = desktopPort ?: break
             sendViaTransfer("${SiloProtocol.PING}|$sid", ip, port)
