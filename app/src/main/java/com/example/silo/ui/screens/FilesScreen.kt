@@ -1,216 +1,168 @@
 package com.example.silo.ui.screens
 
-import androidx.compose.animation.core.*
-import androidx.compose.foundation.BorderStroke
+import androidx.compose.animation.*
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.*
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.outlined.Wifi
-import androidx.compose.material3.*
+import androidx.compose.material.icons.outlined.*
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.scale
-import androidx.compose.ui.graphics.*
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.silo.network.SiloUiState
-import com.example.silo.ui.components.SiloCard
-import com.example.silo.ui.components.StatusBadge
-import com.example.silo.ui.components.TransferCard
+import com.example.silo.ui.theme.SamsungFontFamily
 import com.example.silo.ui.theme.SiloColors
-import com.example.silo.ui.theme.fileEmoji
-import com.example.silo.ui.theme.formatBytes
+
+// Sub-destinations within the Files tab
+sealed class FilesDestination {
+    object Grid           : FilesDestination()
+    object FileTransfer   : FilesDestination()
+    object ImageTransfer  : FilesDestination()
+    object History        : FilesDestination()
+    object Placeholder4   : FilesDestination()
+    object Placeholder5   : FilesDestination()
+    object Placeholder6   : FilesDestination()
+}
+
+private data class GridItem(
+    val label:       String,
+    val icon:        ImageVector,
+    val accent:      Color,
+    val destination: FilesDestination
+)
 
 @Composable
 fun FilesScreen(uiState: SiloUiState, onPickFiles: () -> Unit) {
-    val allTransfers = uiState.activeTransfers + uiState.completedTransfers
+    var destination by remember { mutableStateOf<FilesDestination>(FilesDestination.Grid) }
 
-    LazyColumn(
-        modifier       = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
+    AnimatedContent(
+        targetState  = destination,
+        transitionSpec = {
+            if (targetState == FilesDestination.Grid) {
+                // Going back to grid — slide in from left
+                slideInHorizontally(tween(280)) { -it } + fadeIn(tween(200)) togetherWith
+                slideOutHorizontally(tween(280)) { it } + fadeOut(tween(200))
+            } else {
+                // Opening a sub-screen — slide in from right
+                slideInHorizontally(tween(280)) { it } + fadeIn(tween(200)) togetherWith
+                slideOutHorizontally(tween(280)) { -it } + fadeOut(tween(200))
+            }
+        },
+        label = "filesNav"
+    ) { dest ->
+        when (dest) {
+            is FilesDestination.Grid          -> FilesGrid(onNavigate = { destination = it })
+            is FilesDestination.FileTransfer  -> FileTransferScreen(uiState = uiState, onPickFiles = onPickFiles, onBack = { destination = FilesDestination.Grid })
+            is FilesDestination.ImageTransfer -> ImageTransferScreen(uiState = uiState, onPickFiles = onPickFiles, onBack = { destination = FilesDestination.Grid })
+            is FilesDestination.History       -> HistoryScreen(uiState = uiState, onBack = { destination = FilesDestination.Grid })
+            is FilesDestination.Placeholder4  -> PlaceholderScreen(title = "Clipboard", onBack = { destination = FilesDestination.Grid })
+            is FilesDestination.Placeholder5  -> PlaceholderScreen(title = "Audio",     onBack = { destination = FilesDestination.Grid })
+            is FilesDestination.Placeholder6  -> PlaceholderScreen(title = "More",      onBack = { destination = FilesDestination.Grid })
+        }
+    }
+}
+
+// ── Grid (home of Files tab) ──────────────────────────────
+
+@Composable
+private fun FilesGrid(onNavigate: (FilesDestination) -> Unit) {
+    val items = listOf(
+        GridItem("File Transfer",  Icons.Outlined.FolderOpen,    SiloColors.AccentPurple,     FilesDestination.FileTransfer),
+        GridItem("Image Transfer", Icons.Outlined.Image,          SiloColors.AccentViolet,     FilesDestination.ImageTransfer),
+        GridItem("History",        Icons.Outlined.History,        Color(0xFF3B82F6),           FilesDestination.History),
+        GridItem("Clipboard",      Icons.Outlined.ContentPaste,  Color(0xFF10B981),           FilesDestination.Placeholder4),
+        GridItem("Audio",          Icons.Outlined.MusicNote,     Color(0xFFF59E0B),           FilesDestination.Placeholder5),
+        GridItem("More",           Icons.Outlined.GridView,      SiloColors.TextMuted,        FilesDestination.Placeholder6),
+    )
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(SiloColors.BgDeep)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        if (uiState.connectedSession == null) {
-            // ── Not connected empty state ───────────────────────
-            item {
-                Box(
-                    modifier         = Modifier.fillMaxWidth().padding(top = 48.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(14.dp)
-                    ) {
-                        // Animated radar rings
-                        Box(Modifier.size(110.dp), contentAlignment = Alignment.Center) {
-                            val infiniteTransition = rememberInfiniteTransition(label = "radar")
-                            (0..2).forEach { ring ->
-                                val scale by infiniteTransition.animateFloat(
-                                    initialValue  = 0.3f,
-                                    targetValue   = 1.3f,
-                                    animationSpec = infiniteRepeatable(
-                                        tween(2200, delayMillis = ring * 700),
-                                        RepeatMode.Restart
-                                    ),
-                                    label = "ring$ring"
-                                )
-                                val alpha by infiniteTransition.animateFloat(
-                                    initialValue  = 0.6f,
-                                    targetValue   = 0f,
-                                    animationSpec = infiniteRepeatable(
-                                        tween(2200, delayMillis = ring * 700),
-                                        RepeatMode.Restart
-                                    ),
-                                    label = "alpha$ring"
-                                )
-                                Box(
-                                    Modifier
-                                        .size(90.dp)
-                                        .scale(scale)
-                                        .alpha(alpha)
-                                        .border(1.5.dp, SiloColors.AccentPurple.copy(alpha = alpha), CircleShape)
-                                )
-                            }
-                            Box(
-                                modifier = Modifier
-                                    .size(60.dp)
-                                    .background(
-                                        Brush.linearGradient(
-                                            listOf(
-                                                SiloColors.AccentPurple.copy(0.2f),
-                                                SiloColors.AccentViolet.copy(0.1f)
-                                            )
-                                        ),
-                                        CircleShape
-                                    ),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    Icons.Outlined.Wifi,
-                                    contentDescription = null,
-                                    tint     = SiloColors.AccentPurple,
-                                    modifier = Modifier.size(28.dp)
-                                )
-                            }
-                        }
-
-                        Text(
-                            "Not Connected",
-                            fontWeight = FontWeight.Bold,
-                            fontSize   = 17.sp,
-                            color      = SiloColors.TextPrimary
-                        )
-                        Text(
-                            "Open Silo on your PC and scan\nfor devices to get started",
-                            fontSize   = 13.sp,
-                            color      = SiloColors.TextSecondary,
-                            textAlign  = TextAlign.Center,
-                            lineHeight = 20.sp
-                        )
-                    }
+        // 3 rows × 2 columns, each row gets equal weight
+        items.chunked(2).forEach { rowItems ->
+            Row(
+                modifier              = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                rowItems.forEach { item ->
+                    GridBox(
+                        item     = item,
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
+                        onClick  = { onNavigate(item.destination) }
+                    )
                 }
+                // Pad if odd number of items in last row
+                if (rowItems.size == 1) Spacer(Modifier.weight(1f))
             }
-        } else {
-            // ── Send files button ──────────────────────────────
-            item {
-                Surface(
-                    onClick  = onPickFiles,
-                    color    = Color.Transparent,
-                    shape    = RoundedCornerShape(20.dp),
-                    border   = BorderStroke(
-                        1.5.dp,
-                        Brush.linearGradient(listOf(SiloColors.AccentPurple, SiloColors.AccentViolet))
+        }
+    }
+}
+
+@Composable
+private fun GridBox(item: GridItem, modifier: Modifier, onClick: () -> Unit) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(20.dp))
+            .background(SiloColors.BgSurface)
+            .border(1.dp, SiloColors.BorderColor, RoundedCornerShape(20.dp))
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication        = null,
+                onClick           = onClick
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            // Icon with tinted background
+            Box(
+                modifier = Modifier
+                    .size(52.dp)
+                    .background(
+                        Brush.linearGradient(
+                            listOf(item.accent.copy(alpha = 0.18f), item.accent.copy(alpha = 0.06f))
+                        ),
+                        RoundedCornerShape(16.dp)
                     ),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        Modifier.fillMaxWidth().padding(20.dp),
-                        verticalAlignment     = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(50.dp)
-                                .background(
-                                    Brush.linearGradient(
-                                        listOf(
-                                            SiloColors.AccentPurple.copy(0.25f),
-                                            SiloColors.AccentViolet.copy(0.1f)
-                                        )
-                                    ),
-                                    RoundedCornerShape(14.dp)
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(Icons.Filled.Upload, contentDescription = null, tint = SiloColors.AccentPurple, modifier = Modifier.size(24.dp))
-                        }
-                        Column(Modifier.weight(1f)) {
-                            Text("Send Files", fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = SiloColors.TextPrimary)
-                            Text("Tap to choose files from your device", fontSize = 12.sp, color = SiloColors.TextSecondary)
-                        }
-                        Icon(Icons.Filled.ChevronRight, contentDescription = null, tint = SiloColors.TextMuted)
-                    }
-                }
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector        = item.icon,
+                    contentDescription = item.label,
+                    tint               = item.accent,
+                    modifier           = Modifier.size(26.dp)
+                )
             }
 
-            // ── Queued files ───────────────────────────────────
-            if (uiState.pendingSendFiles.isNotEmpty()) {
-                item {
-                    Text(
-                        "Queued (${uiState.pendingSendFiles.size})",
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize   = 13.sp,
-                        color      = SiloColors.TextSecondary
-                    )
-                }
-                items(uiState.pendingSendFiles) { fileInfo ->
-                    SiloCard {
-                        Row(
-                            verticalAlignment     = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            Text(fileEmoji(fileInfo.name), fontSize = 24.sp)
-                            Column(Modifier.weight(1f)) {
-                                Text(
-                                    fileInfo.name,
-                                    fontWeight = FontWeight.Medium,
-                                    fontSize   = 13.sp,
-                                    color      = SiloColors.TextPrimary,
-                                    maxLines   = 1,
-                                    overflow   = TextOverflow.Ellipsis
-                                )
-                                Text(formatBytes(fileInfo.size), fontSize = 11.sp, color = SiloColors.TextSecondary)
-                            }
-                            StatusBadge("Queued", SiloColors.AccentPurple)
-                        }
-                    }
-                }
-            }
-
-            // ── Transfer history ───────────────────────────────
-            if (allTransfers.isNotEmpty()) {
-                item {
-                    Text(
-                        "Transfers",
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize   = 13.sp,
-                        color      = SiloColors.TextSecondary
-                    )
-                }
-                items(allTransfers) { transfer ->
-                    TransferCard(transfer)
-                }
-            }
+            Text(
+                text          = item.label,
+                fontFamily    = SamsungFontFamily,
+                fontWeight    = FontWeight.Medium,
+                fontSize      = 13.sp,
+                color         = SiloColors.TextPrimary,
+                letterSpacing = 0.sp
+            )
         }
     }
 }
