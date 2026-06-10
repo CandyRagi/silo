@@ -9,7 +9,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
-import androidx.compose.animation.core.*
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
@@ -21,14 +21,11 @@ import com.example.silo.network.SiloService
 import com.example.silo.ui.components.PairingBanner
 import com.example.silo.ui.components.SiloBottomNav
 import com.example.silo.ui.components.SiloTopHeader
-import com.example.silo.ui.screens.CommandsScreen
-import com.example.silo.ui.screens.FilesScreen
-import com.example.silo.ui.screens.SettingsScreen
+import com.example.silo.ui.screens.*
 import com.example.silo.ui.theme.SiloColors
 import com.example.silo.ui.theme.SiloTheme
 
 class MainActivity : ComponentActivity() {
-
     private lateinit var siloService: SiloService
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -52,13 +49,15 @@ class MainActivity : ComponentActivity() {
 fun SiloApp(siloService: SiloService) {
     val context     = LocalContext.current
     val uiState     by siloService.uiState.collectAsStateWithLifecycle()
-    var showSettings by remember { mutableStateOf(false) }
-    var selectedTab  by remember { mutableIntStateOf(0) }
+
+    // Root-level navigation state
+    var showSettings     by remember { mutableStateOf(false) }
+    var selectedTab      by remember { mutableIntStateOf(0) }
+    var filesDestination by remember { mutableStateOf<FilesDestination>(FilesDestination.Grid) }
 
     val permLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) {}
-
     val filePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.GetMultipleContents()
     ) { uris -> uris.forEach { uri -> siloService.sendFile(uri) } }
@@ -80,25 +79,68 @@ fun SiloApp(siloService: SiloService) {
     }
 
     Surface(modifier = Modifier.fillMaxSize(), color = SiloColors.BgDeep) {
+
+        // Determine whether a full-screen overlay is active
+        val inSubScreen = showSettings || filesDestination != FilesDestination.Grid
+
         AnimatedContent(
-            targetState = showSettings,
+            targetState  = inSubScreen,
             transitionSpec = {
                 if (targetState) {
-                    slideInHorizontally { it } + fadeIn() togetherWith slideOutHorizontally { -it } + fadeOut()
+                    slideInHorizontally(tween(280)) { it } + fadeIn(tween(220)) togetherWith
+                    slideOutHorizontally(tween(280)) { -it } + fadeOut(tween(220))
                 } else {
-                    slideInHorizontally { -it } + fadeIn() togetherWith slideOutHorizontally { it } + fadeOut()
+                    slideInHorizontally(tween(280)) { -it } + fadeIn(tween(220)) togetherWith
+                    slideOutHorizontally(tween(280)) { it } + fadeOut(tween(220))
                 }
             },
             label = "rootNav"
-        ) { inSettings ->
-            if (inSettings) {
-                SettingsScreen(uiState = uiState, onBack = { showSettings = false })
-            } else {
-                Column(Modifier.fillMaxSize()) {
-                    // Shared top header
-                    SiloTopHeader(uiState = uiState, onSettings = { showSettings = true })
+        ) { overlayActive ->
 
-                    // Pairing banner (always visible above content)
+            if (overlayActive) {
+                // ── Full-screen overlay (no header / bottom nav) ────────
+                when {
+                    showSettings -> SettingsScreen(
+                        uiState = uiState,
+                        onBack  = { showSettings = false }
+                    )
+                    filesDestination == FilesDestination.FileTransfer -> FileTransferScreen(
+                        uiState    = uiState,
+                        onPickFiles = { filePicker.launch("*/*") },
+                        onBack     = { filesDestination = FilesDestination.Grid }
+                    )
+                    filesDestination == FilesDestination.ImageTransfer -> ImageTransferScreen(
+                        uiState    = uiState,
+                        onPickFiles = { filePicker.launch("image/*") },
+                        onBack     = { filesDestination = FilesDestination.Grid }
+                    )
+                    filesDestination == FilesDestination.History -> HistoryScreen(
+                        uiState = uiState,
+                        onBack  = { filesDestination = FilesDestination.Grid }
+                    )
+                    filesDestination == FilesDestination.Placeholder4 -> PlaceholderScreen(
+                        title  = "Clipboard",
+                        onBack = { filesDestination = FilesDestination.Grid }
+                    )
+                    filesDestination == FilesDestination.Placeholder5 -> PlaceholderScreen(
+                        title  = "Audio",
+                        onBack = { filesDestination = FilesDestination.Grid }
+                    )
+                    filesDestination == FilesDestination.Placeholder6 -> PlaceholderScreen(
+                        title  = "More",
+                        onBack = { filesDestination = FilesDestination.Grid }
+                    )
+                }
+
+            } else {
+                // ── Normal shell (header + tabs + bottom nav) ──────────
+                Column(Modifier.fillMaxSize()) {
+
+                    SiloTopHeader(
+                        uiState    = uiState,
+                        onSettings = { showSettings = true }
+                    )
+
                     AnimatedVisibility(
                         visible = uiState.pendingPairRequest != null,
                         enter   = expandVertically() + fadeIn(),
@@ -113,28 +155,28 @@ fun SiloApp(siloService: SiloService) {
                         }
                     }
 
-                    // Animated tab content
                     Box(Modifier.weight(1f).fillMaxWidth()) {
                         AnimatedContent(
-                            targetState = selectedTab,
+                            targetState  = selectedTab,
                             transitionSpec = {
                                 if (targetState > initialState) {
-                                    slideInHorizontally { it } + fadeIn() togetherWith slideOutHorizontally { -it } + fadeOut()
+                                    slideInHorizontally(tween(250)) { it } + fadeIn(tween(200)) togetherWith
+                                    slideOutHorizontally(tween(250)) { -it } + fadeOut(tween(200))
                                 } else {
-                                    slideInHorizontally { -it } + fadeIn() togetherWith slideOutHorizontally { it } + fadeOut()
+                                    slideInHorizontally(tween(250)) { -it } + fadeIn(tween(200)) togetherWith
+                                    slideOutHorizontally(tween(250)) { it } + fadeOut(tween(200))
                                 }
                             },
                             label = "tabContent"
                         ) { tab ->
                             when (tab) {
-                                0    -> FilesScreen(uiState = uiState, onPickFiles = { filePicker.launch("*/*") })
+                                0    -> FilesScreen(onNavigate = { filesDestination = it })
                                 1    -> CommandsScreen(uiState = uiState)
-                                else -> FilesScreen(uiState = uiState, onPickFiles = { filePicker.launch("*/*") })
+                                else -> FilesScreen(onNavigate = { filesDestination = it })
                             }
                         }
                     }
 
-                    // Bottom nav
                     SiloBottomNav(selectedTab = selectedTab, onTabSelected = { selectedTab = it })
                 }
             }

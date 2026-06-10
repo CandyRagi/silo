@@ -1,7 +1,5 @@
 package com.example.silo.ui.screens
 
-import androidx.compose.animation.*
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -12,7 +10,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -22,19 +21,18 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.silo.network.SiloUiState
 import com.example.silo.ui.theme.SamsungFontFamily
 import com.example.silo.ui.theme.SiloColors
 
-// Sub-destinations within the Files tab
+// Sub-destinations within the Files tab — used by SiloApp for full-screen navigation
 sealed class FilesDestination {
-    object Grid           : FilesDestination()
-    object FileTransfer   : FilesDestination()
-    object ImageTransfer  : FilesDestination()
-    object History        : FilesDestination()
-    object Placeholder4   : FilesDestination()
-    object Placeholder5   : FilesDestination()
-    object Placeholder6   : FilesDestination()
+    object Grid          : FilesDestination()
+    object FileTransfer  : FilesDestination()
+    object ImageTransfer : FilesDestination()
+    object History       : FilesDestination()
+    object Placeholder4  : FilesDestination()
+    object Placeholder5  : FilesDestination()
+    object Placeholder6  : FilesDestination()
 }
 
 private data class GridItem(
@@ -44,48 +42,16 @@ private data class GridItem(
     val destination: FilesDestination
 )
 
+// Just the 2×3 grid — navigation is handled by SiloApp
 @Composable
-fun FilesScreen(uiState: SiloUiState, onPickFiles: () -> Unit) {
-    var destination by remember { mutableStateOf<FilesDestination>(FilesDestination.Grid) }
-
-    AnimatedContent(
-        targetState  = destination,
-        transitionSpec = {
-            if (targetState == FilesDestination.Grid) {
-                // Going back to grid — slide in from left
-                slideInHorizontally(tween(280)) { -it } + fadeIn(tween(200)) togetherWith
-                slideOutHorizontally(tween(280)) { it } + fadeOut(tween(200))
-            } else {
-                // Opening a sub-screen — slide in from right
-                slideInHorizontally(tween(280)) { it } + fadeIn(tween(200)) togetherWith
-                slideOutHorizontally(tween(280)) { -it } + fadeOut(tween(200))
-            }
-        },
-        label = "filesNav"
-    ) { dest ->
-        when (dest) {
-            is FilesDestination.Grid          -> FilesGrid(onNavigate = { destination = it })
-            is FilesDestination.FileTransfer  -> FileTransferScreen(uiState = uiState, onPickFiles = onPickFiles, onBack = { destination = FilesDestination.Grid })
-            is FilesDestination.ImageTransfer -> ImageTransferScreen(uiState = uiState, onPickFiles = onPickFiles, onBack = { destination = FilesDestination.Grid })
-            is FilesDestination.History       -> HistoryScreen(uiState = uiState, onBack = { destination = FilesDestination.Grid })
-            is FilesDestination.Placeholder4  -> PlaceholderScreen(title = "Clipboard", onBack = { destination = FilesDestination.Grid })
-            is FilesDestination.Placeholder5  -> PlaceholderScreen(title = "Audio",     onBack = { destination = FilesDestination.Grid })
-            is FilesDestination.Placeholder6  -> PlaceholderScreen(title = "More",      onBack = { destination = FilesDestination.Grid })
-        }
-    }
-}
-
-// ── Grid (home of Files tab) ──────────────────────────────
-
-@Composable
-private fun FilesGrid(onNavigate: (FilesDestination) -> Unit) {
+fun FilesScreen(onNavigate: (FilesDestination) -> Unit) {
     val items = listOf(
-        GridItem("File Transfer",  Icons.Outlined.FolderOpen,    SiloColors.AccentPurple,     FilesDestination.FileTransfer),
-        GridItem("Image Transfer", Icons.Outlined.Image,          SiloColors.AccentViolet,     FilesDestination.ImageTransfer),
-        GridItem("History",        Icons.Outlined.History,        Color(0xFF3B82F6),           FilesDestination.History),
-        GridItem("Clipboard",      Icons.Outlined.ContentPaste,  Color(0xFF10B981),           FilesDestination.Placeholder4),
-        GridItem("Audio",          Icons.Outlined.MusicNote,     Color(0xFFF59E0B),           FilesDestination.Placeholder5),
-        GridItem("More",           Icons.Outlined.GridView,      SiloColors.TextMuted,        FilesDestination.Placeholder6),
+        GridItem("File Transfer",  Icons.Outlined.FolderOpen,   SiloColors.AccentPurple,  FilesDestination.FileTransfer),
+        GridItem("Image Transfer", Icons.Outlined.Image,         SiloColors.AccentViolet,  FilesDestination.ImageTransfer),
+        GridItem("History",        Icons.Outlined.History,       Color(0xFF3B82F6),        FilesDestination.History),
+        GridItem("Clipboard",      Icons.Outlined.ContentPaste, Color(0xFF10B981),        FilesDestination.Placeholder4),
+        GridItem("Audio",          Icons.Outlined.MusicNote,    Color(0xFFF59E0B),        FilesDestination.Placeholder5),
+        GridItem("More",           Icons.Outlined.GridView,     SiloColors.TextMuted,     FilesDestination.Placeholder6),
     )
 
     Column(
@@ -95,7 +61,6 @@ private fun FilesGrid(onNavigate: (FilesDestination) -> Unit) {
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // 3 rows × 2 columns, each row gets equal weight
         items.chunked(2).forEach { rowItems ->
             Row(
                 modifier              = Modifier
@@ -110,7 +75,6 @@ private fun FilesGrid(onNavigate: (FilesDestination) -> Unit) {
                         onClick  = { onNavigate(item.destination) }
                     )
                 }
-                // Pad if odd number of items in last row
                 if (rowItems.size == 1) Spacer(Modifier.weight(1f))
             }
         }
@@ -135,7 +99,6 @@ private fun GridBox(item: GridItem, modifier: Modifier, onClick: () -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Icon with tinted background
             Box(
                 modifier = Modifier
                     .size(52.dp)
@@ -154,7 +117,6 @@ private fun GridBox(item: GridItem, modifier: Modifier, onClick: () -> Unit) {
                     modifier           = Modifier.size(26.dp)
                 )
             }
-
             Text(
                 text          = item.label,
                 fontFamily    = SamsungFontFamily,
