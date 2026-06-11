@@ -18,6 +18,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.silo.network.SiloService
+import com.example.silo.model.UserProfileState
 import com.example.silo.ui.components.PairingBanner
 import com.example.silo.ui.components.SiloBottomNav
 import com.example.silo.ui.components.SiloTopHeader
@@ -49,6 +50,7 @@ class MainActivity : ComponentActivity() {
 fun SiloApp(siloService: SiloService) {
     val context     = LocalContext.current
     val uiState     by siloService.uiState.collectAsStateWithLifecycle()
+    val profile     = remember { UserProfileState(context) }
 
     // Root-level navigation state
     var showSettings     by remember { mutableStateOf(false) }
@@ -102,6 +104,7 @@ fun SiloApp(siloService: SiloService) {
                 when {
                     showSettings -> SettingsScreen(
                         uiState = uiState,
+                        profile = profile,
                         onBack  = { showSettings = false }
                     )
                     filesDestination == FilesDestination.FileTransfer -> FileTransferScreen(
@@ -138,6 +141,7 @@ fun SiloApp(siloService: SiloService) {
 
                     SiloTopHeader(
                         uiState    = uiState,
+                        profile    = profile,
                         onSettings = { showSettings = true }
                     )
 
