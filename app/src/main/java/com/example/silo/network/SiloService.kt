@@ -105,6 +105,7 @@ class SiloService(private val context: Context) {
     @Volatile private var sessionId:   String? = null
     @Volatile private var desktopIP:   String? = null
     @Volatile private var desktopPort: Int?    = null
+    @Volatile private var lastPingReceived: Long = 0L
 
     private val inboundTransfers = ConcurrentHashMap<String, InboundTransfer>()
 
@@ -143,6 +144,13 @@ class SiloService(private val context: Context) {
     fun stop() {
         Log.d(TAG, "stop()")
         running = false
+        val sid = sessionId
+        val ip = desktopIP
+        val port = desktopPort
+        if (sid != null && ip != null && port != null) {
+            sendRaw("${SiloProtocol.DISCONNECT}|$sid".toByteArray(), ip, port)
+            Log.d(TAG, "Sent DISCONNECT to $ip:$port")
+        }
         try { discoverySocket?.close() } catch (_: Exception) {}
         try { transferSocket?.close()  } catch (_: Exception) {}
         try { if (multicastLock.isHeld) multicastLock.release() } catch (_: Exception) {}
@@ -169,6 +177,7 @@ class SiloService(private val context: Context) {
         }
 
         _uiState.update { it.copy(pendingPairRequest = null, connectedSession = req.sessionId) }
+        lastPingReceived = System.currentTimeMillis()
         thread("silo-keepalive") { runKeepalive(req.sessionId) }
         return true
     }
@@ -179,6 +188,7 @@ class SiloService(private val context: Context) {
         desktopPort = req.desktopPort
         sendViaTransfer("${SiloProtocol.PAIR_ACK}|${req.sessionId}", req.desktopIP, req.desktopPort)
         _uiState.update { it.copy(pendingPairRequest = null, connectedSession = req.sessionId) }
+        lastPingReceived = System.currentTimeMillis()
         thread("silo-keepalive") { runKeepalive(req.sessionId) }
     }
 
@@ -344,10 +354,15 @@ class SiloService(private val context: Context) {
                 inboundTransfers.remove(key)?.let { assembleFile(it, key) }
             }
             SiloProtocol.PING -> {
+                lastPingReceived = System.currentTimeMillis()
                 val pong = "${SiloProtocol.PONG}|${parts.getOrElse(1){""}}" .toByteArray()
                 sock.send(DatagramPacket(pong, pong.size, pkt.address, fromPort))
             }
+            SiloProtocol.PONG -> {
+                lastPingReceived = System.currentTimeMillis()
+            }
             SiloProtocol.DISCONNECT -> {
+                Log.d(TAG, "Received DISCONNECT. Dropping session.")
                 sessionId = null; desktopIP = null; desktopPort = null
                 _uiState.update { it.copy(connectedSession = null) }
             }
@@ -423,8 +438,15 @@ class SiloService(private val context: Context) {
     // ── Keepalive ─────────────────────────────────────────
 
     private fun runKeepalive(sid: String) {
+        lastPingReceived = System.currentTimeMillis()
         while (running && sessionId == sid) {
             Thread.sleep(2000)
+            if (System.currentTimeMillis() - lastPingReceived > 6000) {
+                Log.w(TAG, "Keepalive timeout! No PING/PONG received for 6s. Disconnecting session $sid.")
+                sessionId = null; desktopIP = null; desktopPort = null
+                _uiState.update { it.copy(connectedSession = null) }
+                break
+            }
             val ip   = desktopIP   ?: break
             val port = desktopPort ?: break
             sendViaTransfer("${SiloProtocol.PING}|$sid", ip, port)
