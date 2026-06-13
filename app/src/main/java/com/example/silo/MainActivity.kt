@@ -10,6 +10,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
@@ -17,6 +18,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
+import android.content.ServiceConnection
+import android.os.Build
+import android.os.IBinder
 import com.example.silo.network.SiloService
 import com.example.silo.model.UserProfileState
 import com.example.silo.ui.components.PairingBanner
@@ -27,22 +34,45 @@ import com.example.silo.ui.theme.SiloColors
 import com.example.silo.ui.theme.SiloTheme
 
 class MainActivity : ComponentActivity() {
-    private lateinit var siloService: SiloService
+    private var siloService by mutableStateOf<SiloService?>(null)
+
+    private val serviceConnection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+            val binder = service as SiloService.LocalBinder
+            siloService = binder.getService()
+        }
+        override fun onServiceDisconnected(name: ComponentName?) {
+            siloService = null
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        siloService = SiloService(applicationContext)
+
+        val intent = Intent(this, SiloService::class.java)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(intent)
+        } else {
+            startService(intent)
+        }
+        bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
+
         setContent {
             SiloTheme {
-                SiloApp(siloService = siloService)
+                val service = siloService
+                if (service != null) {
+                    SiloApp(siloService = service)
+                } else {
+                    Box(modifier = Modifier.fillMaxSize().background(SiloColors.BgDeep))
+                }
             }
         }
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        siloService.stop()
+        unbindService(serviceConnection)
     }
 }
 
@@ -107,16 +137,6 @@ fun SiloApp(siloService: SiloService) {
                         profile = profile,
                         onBack  = { showSettings = false }
                     )
-                    filesDestination == FilesDestination.FileTransfer -> FileTransferScreen(
-                        uiState    = uiState,
-                        onPickFiles = { filePicker.launch("*/*") },
-                        onBack     = { filesDestination = FilesDestination.Grid }
-                    )
-                    filesDestination == FilesDestination.ImageTransfer -> ImageTransferScreen(
-                        uiState    = uiState,
-                        onPickFiles = { filePicker.launch("image/*") },
-                        onBack     = { filesDestination = FilesDestination.Grid }
-                    )
                     filesDestination == FilesDestination.History -> HistoryScreen(
                         uiState = uiState,
                         onBack  = { filesDestination = FilesDestination.Grid }
@@ -174,9 +194,17 @@ fun SiloApp(siloService: SiloService) {
                             label = "tabContent"
                         ) { tab ->
                             when (tab) {
-                                0    -> FilesScreen(onNavigate = { filesDestination = it })
+                                0    -> FilesScreen(
+                                    isConnected = uiState.connectedSession != null,
+                                    onNavigate  = { filesDestination = it },
+                                    onPickFiles = { mime -> filePicker.launch(mime) }
+                                )
                                 1    -> CommandsScreen(uiState = uiState)
-                                else -> FilesScreen(onNavigate = { filesDestination = it })
+                                else -> FilesScreen(
+                                    isConnected = uiState.connectedSession != null,
+                                    onNavigate  = { filesDestination = it },
+                                    onPickFiles = { mime -> filePicker.launch(mime) }
+                                )
                             }
                         }
                     }

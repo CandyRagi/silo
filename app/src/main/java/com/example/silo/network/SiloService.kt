@@ -9,6 +9,14 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import android.net.Uri
+import android.app.Service
+import android.content.Intent
+import android.os.Binder
+import android.os.IBinder
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.content.pm.ServiceInfo
 import java.net.*
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -87,7 +95,21 @@ object SiloProtocol {
 // Silo Service  —  plain Thread-based, no coroutines
 // ══════════════════════════════════════════════════════════
 
-class SiloService(private val context: Context) {
+class SiloService : Service() {
+
+    inner class LocalBinder : Binder() {
+        fun getService(): SiloService = this@SiloService
+    }
+    private val binder = LocalBinder()
+
+    override fun onBind(intent: Intent): IBinder {
+        return binder
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        start()
+        return START_NOT_STICKY
+    }
 
     companion object { private const val TAG = "SiloService" }
 
@@ -111,8 +133,7 @@ class SiloService(private val context: Context) {
 
     // MulticastLock so Wi-Fi chip doesn't drop broadcast packets
     private val multicastLock: WifiManager.MulticastLock by lazy {
-        val wm = context.applicationContext
-            .getSystemService(Context.WIFI_SERVICE) as WifiManager
+        val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
         wm.createMulticastLock("silo").apply { setReferenceCounted(true) }
     }
 
@@ -122,6 +143,8 @@ class SiloService(private val context: Context) {
         if (running) { Log.w(TAG, "Already running"); return }
         running = true
         Log.d(TAG, "=== SiloService.start() ===")
+
+        startForegroundNotification()
 
         // Acquire multicast lock
         try {
@@ -141,6 +164,31 @@ class SiloService(private val context: Context) {
         thread("silo-transfer")  { runTransfer() }
     }
 
+    private fun startForegroundNotification() {
+        val channelId = "silo_channel"
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val chan = NotificationChannel(channelId, "Silo Connection", NotificationManager.IMPORTANCE_LOW)
+            val manager = getSystemService(NotificationManager::class.java)
+            manager.createNotificationChannel(chan)
+        }
+        val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Notification.Builder(this, channelId)
+        } else {
+            Notification.Builder(this)
+        }
+        val notification = builder
+            .setContentTitle("Silo is running")
+            .setContentText("Connected in background to PC")
+            .setSmallIcon(android.R.drawable.stat_notify_sync)
+            .build()
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
+        } else {
+            startForeground(1, notification)
+        }
+    }
+
     fun stop() {
         Log.d(TAG, "stop()")
         running = false
@@ -154,6 +202,13 @@ class SiloService(private val context: Context) {
         try { discoverySocket?.close() } catch (_: Exception) {}
         try { transferSocket?.close()  } catch (_: Exception) {}
         try { if (multicastLock.isHeld) multicastLock.release() } catch (_: Exception) {}
+        stopSelf()
+    }
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        Log.d(TAG, "onTaskRemoved: App swiped away")
+        stop()
+        super.onTaskRemoved(rootIntent)
     }
 
     /** Called when the user types a PIN and taps Confirm on the phone. */
@@ -201,7 +256,7 @@ class SiloService(private val context: Context) {
         val sid = sessionId ?: return
         thread("silo-send") {
             try {
-                val cr      = context.contentResolver
+                val cr      = contentResolver
                 val cursor  = cr.query(uri, null, null, null, null)
                 cursor?.moveToFirst()
                 val nameIdx = cursor?.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME) ?: -1
@@ -393,7 +448,7 @@ class SiloService(private val context: Context) {
         sendViaTransfer(startMsg, dIP, dPort)
         Thread.sleep(500)
 
-        val stream = context.contentResolver.openInputStream(uri) ?: return
+        val stream = contentResolver.openInputStream(uri) ?: return
         val buf    = ByteArray(SiloProtocol.CHUNK_SIZE)
         var idx    = 0; var sent = 0L
 
@@ -426,7 +481,7 @@ class SiloService(private val context: Context) {
                 val fos  = java.io.FileOutputStream(file)
                 for (i in 0 until t.totalChunks) fos.write(t.chunks[i] ?: ByteArray(0))
                 fos.close()
-                android.media.MediaScannerConnection.scanFile(context, arrayOf(file.absolutePath), null, null)
+                android.media.MediaScannerConnection.scanFile(this, arrayOf(file.absolutePath), null, null)
                 Log.d(TAG, "Saved: ${file.absolutePath}")
                 completeTransfer(key, t.fileName, t.fileSize)
             } catch (e: Exception) {
@@ -492,7 +547,7 @@ class SiloService(private val context: Context) {
 
     fun getLocalIp(): String {
         return try {
-            val wm = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+            val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
             @Suppress("DEPRECATION")
             val ip = wm.connectionInfo.ipAddress
             if (ip == 0) fallbackIp() else Formatter.formatIpAddress(ip)

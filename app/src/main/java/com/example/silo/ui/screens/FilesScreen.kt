@@ -39,19 +39,20 @@ private data class GridItem(
     val label:       String,
     val icon:        ImageVector,
     val accent:      Color,
-    val destination: FilesDestination
+    val enabled:     Boolean,
+    val onClick:     () -> Unit
 )
 
 // Just the 2×3 grid — navigation is handled by SiloApp
 @Composable
-fun FilesScreen(onNavigate: (FilesDestination) -> Unit) {
+fun FilesScreen(isConnected: Boolean, onNavigate: (FilesDestination) -> Unit, onPickFiles: (String) -> Unit) {
     val items = listOf(
-        GridItem("File Transfer",  Icons.Outlined.FolderOpen,   SiloColors.AccentPurple,  FilesDestination.FileTransfer),
-        GridItem("Image Transfer", Icons.Outlined.Image,         SiloColors.AccentViolet,  FilesDestination.ImageTransfer),
-        GridItem("History",        Icons.Outlined.History,       Color(0xFF3B82F6),        FilesDestination.History),
-        GridItem("Clipboard",      Icons.Outlined.ContentPaste, Color(0xFF10B981),        FilesDestination.Placeholder4),
-        GridItem("Audio",          Icons.Outlined.MusicNote,    Color(0xFFF59E0B),        FilesDestination.Placeholder5),
-        GridItem("More",           Icons.Outlined.GridView,     SiloColors.TextMuted,     FilesDestination.Placeholder6),
+        GridItem("File Transfer",  Icons.Outlined.FolderOpen,   SiloColors.AccentPurple,  isConnected, { onPickFiles("*/*") }),
+        GridItem("Image Transfer", Icons.Outlined.Image,         SiloColors.AccentViolet,  isConnected, { onPickFiles("image/*") }),
+        GridItem("History",        Icons.Outlined.History,       Color(0xFF3B82F6),        true,        { onNavigate(FilesDestination.History) }),
+        GridItem("Clipboard",      Icons.Outlined.ContentPaste, Color(0xFF10B981),        true,        { onNavigate(FilesDestination.Placeholder4) }),
+        GridItem("Audio",          Icons.Outlined.MusicNote,    Color(0xFFF59E0B),        isConnected, { onPickFiles("audio/*") }),
+        GridItem("More",           Icons.Outlined.GridView,     SiloColors.TextMuted,     true,        { onNavigate(FilesDestination.Placeholder6) }),
     )
 
     Column(
@@ -72,7 +73,7 @@ fun FilesScreen(onNavigate: (FilesDestination) -> Unit) {
                     GridBox(
                         item     = item,
                         modifier = Modifier.weight(1f).fillMaxHeight(),
-                        onClick  = { onNavigate(item.destination) }
+                        onClick  = item.onClick
                     )
                 }
                 if (rowItems.size == 1) Spacer(Modifier.weight(1f))
@@ -83,14 +84,16 @@ fun FilesScreen(onNavigate: (FilesDestination) -> Unit) {
 
 @Composable
 private fun GridBox(item: GridItem, modifier: Modifier, onClick: () -> Unit) {
+    val alpha = if (item.enabled) 1f else 0.4f
+    
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(20.dp))
             .background(SiloColors.BgSurface)
-            .border(1.dp, SiloColors.BorderColor, RoundedCornerShape(20.dp))
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication        = null,
+                enabled           = item.enabled,
                 onClick           = onClick
             ),
         contentAlignment = Alignment.Center
@@ -104,7 +107,7 @@ private fun GridBox(item: GridItem, modifier: Modifier, onClick: () -> Unit) {
                     .size(52.dp)
                     .background(
                         Brush.linearGradient(
-                            listOf(item.accent.copy(alpha = 0.18f), item.accent.copy(alpha = 0.06f))
+                            listOf(item.accent.copy(alpha = 0.18f * alpha), item.accent.copy(alpha = 0.06f * alpha))
                         ),
                         RoundedCornerShape(16.dp)
                     ),
@@ -113,7 +116,7 @@ private fun GridBox(item: GridItem, modifier: Modifier, onClick: () -> Unit) {
                 Icon(
                     imageVector        = item.icon,
                     contentDescription = item.label,
-                    tint               = item.accent,
+                    tint               = item.accent.copy(alpha = alpha),
                     modifier           = Modifier.size(26.dp)
                 )
             }
@@ -122,7 +125,7 @@ private fun GridBox(item: GridItem, modifier: Modifier, onClick: () -> Unit) {
                 fontFamily    = SamsungFontFamily,
                 fontWeight    = FontWeight.Medium,
                 fontSize      = 13.sp,
-                color         = SiloColors.TextPrimary,
+                color         = SiloColors.TextPrimary.copy(alpha = alpha),
                 letterSpacing = 0.sp
             )
         }
