@@ -19,8 +19,9 @@ import com.example.silo.network.TransferDirection
 import com.example.silo.network.TransferInfo
 import com.example.silo.network.TransferStatus
 import com.example.silo.ui.theme.SiloColors
-import com.example.silo.ui.theme.fileEmoji
 import com.example.silo.ui.theme.formatBytes
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.InsertDriveFile
 
 // ── SiloCard ──────────────────────────────────────────────
 
@@ -87,7 +88,7 @@ fun TransferCard(transfer: TransferInfo) {
                 verticalAlignment     = androidx.compose.ui.Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Text(fileEmoji(transfer.fileName), fontSize = 24.sp)
+                Icon(Icons.Filled.InsertDriveFile, contentDescription = null, tint = SiloColors.TextSecondary, modifier = Modifier.size(24.dp))
                 Column(Modifier.weight(1f)) {
                     Text(
                         transfer.fileName,

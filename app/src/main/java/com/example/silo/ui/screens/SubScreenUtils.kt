@@ -73,7 +73,7 @@ fun SectionLabel(text: String) {
 // ── Empty state for sub-screens ───────────────────────────
 
 @Composable
-fun EmptySubScreen(icon: String, message: String) {
+fun EmptySubScreen(message: String) {
     Box(
         modifier         = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
@@ -83,7 +83,6 @@ fun EmptySubScreen(icon: String, message: String) {
             verticalArrangement = Arrangement.spacedBy(12.dp),
             modifier            = Modifier.padding(32.dp)
         ) {
-            Text(icon, fontSize = 48.sp)
             Text(
                 message,
                 fontFamily = SamsungFontFamily,

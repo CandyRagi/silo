@@ -29,7 +29,6 @@ fun HistoryScreen(uiState: SiloUiState, onBack: () -> Unit) {
 
         if (completed.isEmpty()) {
             EmptySubScreen(
-                icon    = "🕓",
                 message = "No transfers yet"
             )
         } else {
