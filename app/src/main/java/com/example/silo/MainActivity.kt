@@ -83,9 +83,10 @@ fun SiloApp(siloService: SiloService) {
     val profile     = remember { UserProfileState(context) }
 
     // Root-level navigation state
-    var showSettings     by remember { mutableStateOf(false) }
-    var selectedTab      by remember { mutableIntStateOf(0) }
-    var filesDestination by remember { mutableStateOf<FilesDestination>(FilesDestination.Grid) }
+    var showSettings      by remember { mutableStateOf(false) }
+    var selectedTab       by remember { mutableIntStateOf(0) }
+    var filesDestination  by remember { mutableStateOf<FilesDestination>(FilesDestination.Grid) }
+    var commandsDestination by remember { mutableStateOf<CommandsDestination>(CommandsDestination.Grid) }
 
     val permLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -113,7 +114,7 @@ fun SiloApp(siloService: SiloService) {
     Surface(modifier = Modifier.fillMaxSize(), color = SiloColors.BgDeep) {
 
         // Determine whether a full-screen overlay is active
-        val inSubScreen = showSettings || filesDestination != FilesDestination.Grid
+        val inSubScreen = showSettings || filesDestination != FilesDestination.Grid || commandsDestination != CommandsDestination.Grid
 
         AnimatedContent(
             targetState  = inSubScreen,
@@ -152,6 +153,11 @@ fun SiloApp(siloService: SiloService) {
                     filesDestination == FilesDestination.Placeholder6 -> PlaceholderScreen(
                         title  = "More",
                         onBack = { filesDestination = FilesDestination.Grid }
+                    )
+                    commandsDestination == CommandsDestination.MouseControl -> MouseControlScreen(
+                        onBack       = { commandsDestination = CommandsDestination.Grid },
+                        onMouseMove  = { dx, dy -> siloService.sendMouseMove(dx, dy) },
+                        onMouseClick = { btn -> siloService.sendMouseClick(btn) }
                     )
                 }
 
@@ -199,7 +205,10 @@ fun SiloApp(siloService: SiloService) {
                                     onNavigate  = { filesDestination = it },
                                     onPickFiles = { mime -> filePicker.launch(mime) }
                                 )
-                                1    -> CommandsScreen(uiState = uiState)
+                                1    -> CommandsScreen(
+                                    uiState    = uiState,
+                                    onNavigate = { commandsDestination = it }
+                                )
                                 else -> FilesScreen(
                                     isConnected = uiState.connectedSession != null,
                                     onNavigate  = { filesDestination = it },

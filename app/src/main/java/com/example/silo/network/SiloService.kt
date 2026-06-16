@@ -87,6 +87,8 @@ object SiloProtocol {
     const val PING           = "SILO_PING"
     const val PONG           = "SILO_PONG"
     const val DISCONNECT     = "SILO_DISCONNECT"
+    const val MOUSE_MOVE     = "SILO_MOUSE_MOVE"
+    const val MOUSE_CLICK    = "SILO_MOUSE_CLICK"
 
     fun generatePin(): String = (100000..999999).random().toString()
 }
@@ -564,7 +566,37 @@ class SiloService : Service() {
         } catch (e: Exception) { "unknown" }
     }
 
-    // ── Utility ───────────────────────────────────────────
+    // ── Mouse Control ──────────────────────────────────────────
+
+    fun sendMouseMove(dx: Float, dy: Float) {
+        val sid = sessionId ?: return
+        val ip = desktopIP ?: return
+        val port = desktopPort ?: return
+        thread("mouseMove") {
+            try {
+                val msg = "${SiloProtocol.MOUSE_MOVE}|$sid|$dx|$dy"
+                sendViaTransfer(msg, ip, port)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to send mouse move", e)
+            }
+        }
+    }
+
+    fun sendMouseClick(button: String) {
+        val sid = sessionId ?: return
+        val ip = desktopIP ?: return
+        val port = desktopPort ?: return
+        thread("mouseClick") {
+            try {
+                val msg = "${SiloProtocol.MOUSE_CLICK}|$sid|$button"
+                sendViaTransfer(msg, ip, port)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to send mouse click", e)
+            }
+        }
+    }
+
+    // ── Transfers ──────────────────────────────────────────────
 
     private fun thread(name: String, block: () -> Unit): Thread =
         Thread(block, name).also { it.isDaemon = true; it.start() }

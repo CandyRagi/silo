@@ -24,6 +24,11 @@ import com.example.silo.network.SiloUiState
 import com.example.silo.ui.theme.SamsungFontFamily
 import com.example.silo.ui.theme.SiloColors
 
+sealed class CommandsDestination {
+    object Grid         : CommandsDestination()
+    object MouseControl : CommandsDestination()
+}
+
 private data class CommandItem(
     val label:       String,
     val icon:        ImageVector,
@@ -33,11 +38,11 @@ private data class CommandItem(
 )
 
 @Composable
-fun CommandsScreen(uiState: SiloUiState) {
+fun CommandsScreen(uiState: SiloUiState, onNavigate: (CommandsDestination) -> Unit) {
     val isConnected = uiState.connectedSession != null
 
     val items = listOf(
-        CommandItem("Mouse Control",   Icons.Outlined.Mouse,             SiloColors.AccentPurple,  isConnected, {}),
+        CommandItem("Mouse Control",   Icons.Outlined.Mouse,             SiloColors.AccentPurple,  isConnected, { onNavigate(CommandsDestination.MouseControl) }),
         CommandItem("Keyboard Control",Icons.Outlined.Keyboard,          SiloColors.AccentViolet,  isConnected, {}),
         CommandItem("Command Prompt",  Icons.Outlined.Terminal,          Color(0xFF3B82F6),        false,       {}), // (Coming soon)
         CommandItem("Power Off",       Icons.Outlined.PowerSettingsNew,  SiloColors.Red,           isConnected, {}),
