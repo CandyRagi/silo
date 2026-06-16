@@ -31,9 +31,6 @@ class UserProfileState(context: Context) {
     var avatarColorIndex by mutableStateOf(prefs.getInt("avatar_index", 0))
         private set
 
-    var allowControlByPhone by mutableStateOf(prefs.getBoolean("allow_control", true))
-        private set
-
     val avatarColor: Color get() = avatarPalette[avatarColorIndex.coerceIn(0, avatarPalette.lastIndex)]
 
     fun update(name: String, colorIndex: Int) {
@@ -42,13 +39,6 @@ class UserProfileState(context: Context) {
         prefs.edit()
             .putString("name", name)
             .putInt("avatar_index", colorIndex)
-            .apply()
-    }
-
-    fun setAllowControlByPhone(allow: Boolean) {
-        allowControlByPhone = allow
-        prefs.edit()
-            .putBoolean("allow_control", allow)
             .apply()
     }
 }

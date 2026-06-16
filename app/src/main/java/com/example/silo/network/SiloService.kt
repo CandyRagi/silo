@@ -60,7 +60,8 @@ data class SiloUiState(
     val pendingPairRequest: PairRequest? = null,
     val activeTransfers:    List<TransferInfo>  = emptyList(),
     val completedTransfers: List<TransferInfo>  = emptyList(),
-    val pendingSendFiles:   List<FileQueueItem> = emptyList()
+    val pendingSendFiles:   List<FileQueueItem> = emptyList(),
+    val desktopAllowsControl: Boolean = true
 )
 
 // ══════════════════════════════════════════════════════════
@@ -89,6 +90,7 @@ object SiloProtocol {
     const val DISCONNECT     = "SILO_DISCONNECT"
     const val MOUSE_MOVE     = "SILO_MOUSE_MOVE"
     const val MOUSE_CLICK    = "SILO_MOUSE_CLICK"
+    const val CTRL_ALLOW     = "SILO_CTRL_ALLOW"
 
     fun generatePin(): String = (100000..999999).random().toString()
 }
@@ -304,6 +306,13 @@ class SiloService : Service() {
                             InetAddress.getByName(senderIP), SiloProtocol.PORT_DISCOVERY))
                         Log.d(TAG, "Replied HELLO to $senderIP  myIP=$myIP")
                     }
+                    if (msg.startsWith(SiloProtocol.CTRL_ALLOW)) {
+                        val parts = msg.split("|")
+                        if (parts.size >= 3 && parts[1] == sessionId) {
+                            val allow = parts[2] == "true"
+                            _uiState.update { it.copy(desktopAllowsControl = allow) }
+                        }
+                    }
                 } catch (e: SocketException) {
                     if (!running) break else Log.e(TAG, "Discovery recv error: ${e.message}")
                 } catch (e: Exception) {
@@ -422,6 +431,12 @@ class SiloService : Service() {
                 Log.d(TAG, "Received DISCONNECT. Dropping session.")
                 sessionId = null; desktopIP = null; desktopPort = null
                 _uiState.update { it.copy(connectedSession = null) }
+            }
+            SiloProtocol.CTRL_ALLOW -> {
+                if (parts.size >= 3 && parts[1] == sessionId) {
+                    val allow = parts[2] == "true"
+                    _uiState.update { it.copy(desktopAllowsControl = allow) }
+                }
             }
         }
     }

@@ -40,14 +40,15 @@ private data class CommandItem(
 @Composable
 fun CommandsScreen(uiState: SiloUiState, onNavigate: (CommandsDestination) -> Unit) {
     val isConnected = uiState.connectedSession != null
+    val isAllowed = isConnected && uiState.desktopAllowsControl
 
     val items = listOf(
-        CommandItem("Mouse Control",   Icons.Outlined.Mouse,             SiloColors.AccentPurple,  isConnected, { onNavigate(CommandsDestination.MouseControl) }),
-        CommandItem("Keyboard Control",Icons.Outlined.Keyboard,          SiloColors.AccentViolet,  isConnected, {}),
-        CommandItem("Command Prompt",  Icons.Outlined.Terminal,          Color(0xFF3B82F6),        false,       {}), // (Coming soon)
-        CommandItem("Power Off",       Icons.Outlined.PowerSettingsNew,  SiloColors.Red,           isConnected, {}),
-        CommandItem("Custom Command",  Icons.Outlined.Code,              Color(0xFF10B981),        isConnected, {}),
-        CommandItem("More",            Icons.Outlined.GridView,          SiloColors.TextMuted,     true,        {}),
+        CommandItem("Mouse Control",   Icons.Outlined.Mouse,             SiloColors.AccentPurple,  isAllowed, { onNavigate(CommandsDestination.MouseControl) }),
+        CommandItem("Keyboard Control",Icons.Outlined.Keyboard,          SiloColors.AccentViolet,  isAllowed, {}),
+        CommandItem("Command Prompt",  Icons.Outlined.Terminal,          Color(0xFF3B82F6),        false,     {}), // (Coming soon)
+        CommandItem("Power Off",       Icons.Outlined.PowerSettingsNew,  SiloColors.Red,           isAllowed, {}),
+        CommandItem("Custom Command",  Icons.Outlined.Code,              Color(0xFF10B981),        isAllowed, {}),
+        CommandItem("More",            Icons.Outlined.GridView,          SiloColors.TextMuted,     true,      {}),
     )
 
     Column(
