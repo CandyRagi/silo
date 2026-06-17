@@ -2,6 +2,7 @@ package com.example.silo.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -42,6 +43,9 @@ fun MouseControlScreen(
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(24.dp))
                     .background(SiloColors.BgSurface)
+                    .pointerInput(Unit) {
+                        detectTapGestures(onTap = { onMouseClick("left") })
+                    }
                     .pointerInput(Unit) {
                         detectDragGestures { change, dragAmount ->
                             change.consume()

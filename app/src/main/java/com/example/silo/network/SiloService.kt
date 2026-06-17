@@ -90,6 +90,7 @@ object SiloProtocol {
     const val DISCONNECT     = "SILO_DISCONNECT"
     const val MOUSE_MOVE     = "SILO_MOUSE_MOVE"
     const val MOUSE_CLICK    = "SILO_MOUSE_CLICK"
+    const val KEYBOARD_INPUT = "SILO_KEYBOARD_INPUT"
     const val CTRL_ALLOW     = "SILO_CTRL_ALLOW"
 
     fun generatePin(): String = (100000..999999).random().toString()
@@ -607,6 +608,20 @@ class SiloService : Service() {
                 sendViaTransfer(msg, ip, port)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to send mouse click", e)
+            }
+        }
+    }
+
+    fun sendKeyboard(key: String) {
+        val sid = sessionId ?: return
+        val ip = desktopIP ?: return
+        val port = desktopPort ?: return
+        thread("keyboard") {
+            try {
+                val msg = "${SiloProtocol.KEYBOARD_INPUT}|$sid|${java.net.URLEncoder.encode(key, "UTF-8")}"
+                sendViaTransfer(msg, ip, port)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to send keyboard input", e)
             }
         }
     }

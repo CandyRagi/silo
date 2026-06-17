@@ -159,6 +159,12 @@ fun SiloApp(siloService: SiloService) {
                         onMouseMove  = { dx, dy -> siloService.sendMouseMove(dx, dy) },
                         onMouseClick = { btn -> siloService.sendMouseClick(btn) }
                     )
+                    commandsDestination == CommandsDestination.KeyboardControl -> KeyboardControlScreen(
+                        onBack       = { commandsDestination = CommandsDestination.Grid },
+                        onSendKey    = { key -> siloService.sendKeyboard(key) },
+                        onSendMove   = { dx, dy -> siloService.sendMouseMove(dx, dy) },
+                        onSendClick  = { btn -> siloService.sendMouseClick(btn) }
+                    )
                 }
 
             } else {

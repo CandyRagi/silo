@@ -25,8 +25,9 @@ import com.example.silo.ui.theme.SamsungFontFamily
 import com.example.silo.ui.theme.SiloColors
 
 sealed class CommandsDestination {
-    object Grid         : CommandsDestination()
-    object MouseControl : CommandsDestination()
+    object Grid            : CommandsDestination()
+    object MouseControl    : CommandsDestination()
+    object KeyboardControl : CommandsDestination()
 }
 
 private data class CommandItem(
@@ -44,7 +45,7 @@ fun CommandsScreen(uiState: SiloUiState, onNavigate: (CommandsDestination) -> Un
 
     val items = listOf(
         CommandItem("Mouse Control",   Icons.Outlined.Mouse,             SiloColors.AccentPurple,  isAllowed, { onNavigate(CommandsDestination.MouseControl) }),
-        CommandItem("Keyboard Control",Icons.Outlined.Keyboard,          SiloColors.AccentViolet,  isAllowed, {}),
+        CommandItem("Keyboard Control",Icons.Outlined.Keyboard,          SiloColors.AccentViolet,  isAllowed, { onNavigate(CommandsDestination.KeyboardControl) }),
         CommandItem("Command Prompt",  Icons.Outlined.Terminal,          Color(0xFF3B82F6),        false,     {}), // (Coming soon)
         CommandItem("Power Off",       Icons.Outlined.PowerSettingsNew,  SiloColors.Red,           isAllowed, {}),
         CommandItem("Custom Command",  Icons.Outlined.Code,              Color(0xFF10B981),        isAllowed, {}),
