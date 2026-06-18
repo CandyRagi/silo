@@ -9,8 +9,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -79,7 +81,7 @@ fun InfoRow(label: String, value: String) {
 @Composable
 fun TransferCard(transfer: TransferInfo) {
     SiloCard(borderColor = when (transfer.status) {
-        TransferStatus.COMPLETE -> SiloColors.Green.copy(alpha = 0.3f)
+        TransferStatus.COMPLETE -> if (transfer.direction == TransferDirection.SEND) SiloColors.Green.copy(alpha = 0.5f) else Color(0xFFF59E0B).copy(alpha = 0.5f)
         TransferStatus.ERROR    -> SiloColors.Red.copy(alpha = 0.3f)
         else                    -> null
     }) {

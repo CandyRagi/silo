@@ -16,9 +16,31 @@ import com.example.silo.ui.components.TransferCard
 import com.example.silo.ui.theme.SamsungFontFamily
 import com.example.silo.ui.theme.SiloColors
 
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.platform.LocalContext
+import com.example.silo.database.SiloDatabase
+import com.example.silo.network.TransferDirection
+
 @Composable
 fun HistoryScreen(uiState: SiloUiState, onBack: () -> Unit) {
-    val completed = uiState.completedTransfers
+    val context = LocalContext.current
+    val db = SiloDatabase.getDatabase(context)
+    val historyEntities by db.historyDao().getAllHistory().collectAsState(initial = emptyList())
+    
+    val completed = historyEntities.map {
+        com.example.silo.network.TransferInfo(
+            id = it.id.toString(),
+            sessionId = "",
+            fileId = "",
+            fileName = it.fileName,
+            totalBytes = it.totalBytes,
+            bytesTransferred = it.totalBytes,
+            progress = 100,
+            direction = if (it.direction == "send") TransferDirection.SEND else TransferDirection.RECEIVE,
+            status = TransferStatus.COMPLETE
+        )
+    }
 
     Column(
         modifier = Modifier

@@ -45,14 +45,19 @@ private data class GridItem(
 
 // Just the 2×3 grid — navigation is handled by SiloApp
 @Composable
-fun FilesScreen(isConnected: Boolean, onNavigate: (FilesDestination) -> Unit, onPickFiles: (String) -> Unit) {
+fun FilesScreen(
+    isConnected: Boolean,
+    onNavigate: (FilesDestination) -> Unit,
+    onPickFiles: (String) -> Unit,
+    onCameraCapture: () -> Unit
+) {
     val items = listOf(
-        GridItem("File Transfer",  Icons.Outlined.FolderOpen,   SiloColors.AccentPurple,  isConnected, { onPickFiles("*/*") }),
+        GridItem("File Transfer",  Icons.Outlined.FolderOpen,    SiloColors.AccentPurple,  isConnected, { onPickFiles("*/*") }),
         GridItem("Image Transfer", Icons.Outlined.Image,         SiloColors.AccentViolet,  isConnected, { onPickFiles("image/*") }),
+        GridItem("Audio",          Icons.Outlined.MusicNote,     Color(0xFFF59E0B),        isConnected, { onPickFiles("audio/*") }),
+        GridItem("Quick Camera",   Icons.Outlined.CameraAlt,     Color(0xFF10B981),        isConnected, { onCameraCapture() }),
         GridItem("History",        Icons.Outlined.History,       Color(0xFF3B82F6),        true,        { onNavigate(FilesDestination.History) }),
-        GridItem("Clipboard",      Icons.Outlined.ContentPaste, Color(0xFF10B981),        true,        { onNavigate(FilesDestination.Placeholder4) }),
-        GridItem("Audio",          Icons.Outlined.MusicNote,    Color(0xFFF59E0B),        isConnected, { onPickFiles("audio/*") }),
-        GridItem("More",           Icons.Outlined.GridView,     SiloColors.TextMuted,     true,        { onNavigate(FilesDestination.Placeholder6) }),
+        GridItem("More",           Icons.Outlined.GridView,      SiloColors.TextMuted,     true,        { onNavigate(FilesDestination.Placeholder6) }),
     )
 
     Column(

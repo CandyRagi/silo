@@ -22,8 +22,11 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
+import android.graphics.Bitmap
+import android.net.Uri
 import android.os.Build
 import android.os.IBinder
+import java.io.File
 import com.example.silo.network.SiloService
 import com.example.silo.model.UserProfileState
 import com.example.silo.ui.components.PairingBanner
@@ -94,6 +97,22 @@ fun SiloApp(siloService: SiloService) {
     val filePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.GetMultipleContents()
     ) { uris -> uris.forEach { uri -> siloService.sendFile(uri) } }
+
+    val cameraLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.TakePicturePreview()
+    ) { bitmap: Bitmap? ->
+        if (bitmap != null) {
+            try {
+                val file = File(context.cacheDir, "camera_${System.currentTimeMillis()}.jpg")
+                file.outputStream().use { out ->
+                    bitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
+                }
+                siloService.sendFile(Uri.fromFile(file))
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
 
     LaunchedEffect(Unit) {
         siloService.start()
@@ -209,7 +228,8 @@ fun SiloApp(siloService: SiloService) {
                                 0    -> FilesScreen(
                                     isConnected = uiState.connectedSession != null,
                                     onNavigate  = { filesDestination = it },
-                                    onPickFiles = { mime -> filePicker.launch(mime) }
+                                    onPickFiles = { mime -> filePicker.launch(mime) },
+                                    onCameraCapture = { cameraLauncher.launch(null) }
                                 )
                                 1    -> CommandsScreen(
                                     uiState    = uiState,
@@ -218,7 +238,8 @@ fun SiloApp(siloService: SiloService) {
                                 else -> FilesScreen(
                                     isConnected = uiState.connectedSession != null,
                                     onNavigate  = { filesDestination = it },
-                                    onPickFiles = { mime -> filePicker.launch(mime) }
+                                    onPickFiles = { mime -> filePicker.launch(mime) },
+                                    onCameraCapture = { cameraLauncher.launch(null) }
                                 )
                             }
                         }

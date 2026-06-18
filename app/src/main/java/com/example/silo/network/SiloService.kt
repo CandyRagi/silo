@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import android.net.Uri
 import android.app.Service
 import android.content.Intent
@@ -262,13 +263,19 @@ class SiloService : Service() {
         thread("silo-send") {
             try {
                 val cr      = contentResolver
-                val cursor  = cr.query(uri, null, null, null, null)
+                val cursor = if (uri.scheme == "content") cr.query(uri, null, null, null, null) else null
                 cursor?.moveToFirst()
                 val nameIdx = cursor?.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME) ?: -1
                 val sizeIdx = cursor?.getColumnIndex(android.provider.OpenableColumns.SIZE)         ?: -1
                 val name    = if (nameIdx >= 0) cursor?.getString(nameIdx) else uri.lastPathSegment ?: "file"
-                val size    = if (sizeIdx >= 0) cursor?.getLong(sizeIdx)   else 0L
+                var size    = if (sizeIdx >= 0) cursor?.getLong(sizeIdx)   else 0L
                 cursor?.close()
+
+                if (size == 0L && uri.scheme == "file") {
+                    val f = java.io.File(uri.path!!)
+                    if (f.exists()) size = f.length()
+                }
+
                 _uiState.update { it.copy(pendingSendFiles = it.pendingSendFiles +
                     FileQueueItem(name ?: "file", size ?: 0L, uri)) }
                 sendFileUDP(uri, name ?: "file", size ?: 0L, sid)
@@ -553,11 +560,38 @@ class SiloService : Service() {
                 status = TransferStatus.IN_PROGRESS) else it }) }
     }
     private fun completeTransfer(key: String, name: String, size: Long) {
-        _uiState.update { s ->
-            val t = s.activeTransfers.find { it.id == key }
-                ?.copy(status = TransferStatus.COMPLETE, progress = 100, bytesTransferred = size)
-            s.copy(activeTransfers   = s.activeTransfers.filterNot { it.id == key },
-                   completedTransfers = if (t != null) listOf(t) + s.completedTransfers else s.completedTransfers)
+        val t = _uiState.value.activeTransfers.find { it.id == key } ?: return
+        
+        if (t.direction == TransferDirection.RECEIVE) {
+            val f = java.io.File(getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS), name)
+            updateProgress(key, size, 100)
+            
+            val db = com.example.silo.database.SiloDatabase.getDatabase(this)
+            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                db.historyDao().insert(
+                    com.example.silo.database.HistoryEntity(
+                        fileName = name,
+                        totalBytes = size,
+                        direction = "receive",
+                        timestamp = System.currentTimeMillis(),
+                        savedPath = f.absolutePath
+                    )
+                )
+            }
+        } else {
+            updateProgress(key, size, 100)
+            
+            val db = com.example.silo.database.SiloDatabase.getDatabase(this)
+            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                db.historyDao().insert(
+                    com.example.silo.database.HistoryEntity(
+                        fileName = name,
+                        totalBytes = size,
+                        direction = "send",
+                        timestamp = System.currentTimeMillis()
+                    )
+                )
+            }
         }
     }
 
