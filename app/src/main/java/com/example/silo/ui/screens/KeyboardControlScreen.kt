@@ -16,6 +16,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
@@ -23,6 +24,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalDensity
 import com.example.silo.ui.theme.SamsungFontFamily
 import com.example.silo.ui.theme.SiloColors
 
@@ -59,10 +61,13 @@ fun KeyboardControlScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            val configuration = LocalConfiguration.current
+            val trackpadHeight = (configuration.screenHeightDp / 3).dp
+
             // Trackpad Area
             Box(
                 modifier = Modifier
-                    .weight(1f)
+                    .height(trackpadHeight)
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(24.dp))
                     .background(SiloColors.BgSurface)
@@ -85,11 +90,6 @@ fun KeyboardControlScreen(
                     fontWeight = FontWeight.Medium
                 )
             }
-
-            Text(
-                "Type on your keyboard to control the PC",
-                color = SiloColors.TextSecondary
-            )
 
             // Invisible text field to capture input
             BasicTextField(
@@ -126,15 +126,18 @@ fun KeyboardControlScreen(
                 textStyle = androidx.compose.ui.text.TextStyle(color = Color.Transparent)
             )
 
-            Spacer(modifier = Modifier.height(20.dp))
-            Button(
-                onClick = {
-                    focusRequester.requestFocus()
-                    keyboardController?.show()
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = SiloColors.AccentViolet)
-            ) {
-                Text("Show Keyboard")
+            val isImeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+            if (!isImeVisible) {
+                Spacer(modifier = Modifier.height(20.dp))
+                Button(
+                    onClick = {
+                        focusRequester.requestFocus()
+                        keyboardController?.show()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = SiloColors.AccentViolet)
+                ) {
+                    Text("Show Keyboard")
+                }
             }
         }
     }
