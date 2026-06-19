@@ -217,14 +217,12 @@ class SiloService : Service() {
         super.onTaskRemoved(rootIntent)
     }
 
-    /** Called when the user types a PIN and taps Confirm on the phone. */
-    fun verifyAndAcceptPairing(req: PairRequest, enteredPin: String): Boolean {
-        if (enteredPin != req.pin) return false   // wrong PIN
+    fun acceptPairing(req: PairRequest) {
         sessionId   = req.sessionId
         desktopIP   = req.desktopIP
         desktopPort = req.desktopPort
 
-        // Send PAIR_ACK 3 times (UDP is lossy) — desktop ignores duplicates gracefully
+        // Send PAIR_ACK 3 times (UDP is lossy)
         val ackMsg = "${SiloProtocol.PAIR_ACK}|${req.sessionId}"
         sendViaTransfer(ackMsg, req.desktopIP, req.desktopPort)
         Log.d(TAG, "PAIR_ACK #1 sent to ${req.desktopIP}:${req.desktopPort}")
@@ -237,17 +235,6 @@ class SiloService : Service() {
             Log.d(TAG, "PAIR_ACK #3 sent to ${req.desktopIP}:${req.desktopPort}")
         }
 
-        _uiState.update { it.copy(pendingPairRequest = null, connectedSession = req.sessionId) }
-        lastPingReceived = System.currentTimeMillis()
-        thread("silo-keepalive") { runKeepalive(req.sessionId) }
-        return true
-    }
-
-    fun acceptPairing(req: PairRequest) {
-        sessionId   = req.sessionId
-        desktopIP   = req.desktopIP
-        desktopPort = req.desktopPort
-        sendViaTransfer("${SiloProtocol.PAIR_ACK}|${req.sessionId}", req.desktopIP, req.desktopPort)
         _uiState.update { it.copy(pendingPairRequest = null, connectedSession = req.sessionId) }
         lastPingReceived = System.currentTimeMillis()
         thread("silo-keepalive") { runKeepalive(req.sessionId) }

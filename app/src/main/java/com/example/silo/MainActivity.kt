@@ -204,7 +204,7 @@ fun SiloApp(siloService: SiloService) {
                         uiState.pendingPairRequest?.let { req ->
                             PairingBanner(
                                 req      = req,
-                                onVerify = { pin -> siloService.verifyAndAcceptPairing(req, pin) },
+                                onAccept = { siloService.acceptPairing(req) },
                                 onDeny   = { siloService.denyPairing(req) }
                             )
                         }
