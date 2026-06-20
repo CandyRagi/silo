@@ -130,6 +130,60 @@ fun SiloApp(siloService: SiloService) {
         if (storagePerms.isNotEmpty()) permLauncher.launch(storagePerms.toTypedArray())
     }
 
+    DisposableEffect(Unit) {
+        val clipboardManager = context.getSystemService(Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
+        
+        fun attemptClipboardSync(reason: String) {
+            if (siloService.uiState.value.connectedSession != null) {
+                try {
+                    val clip = clipboardManager?.primaryClip
+                    if (clip != null && clip.itemCount > 0) {
+                        val text = clip.getItemAt(0).coerceToText(context)?.toString()
+                        if (!text.isNullOrEmpty()) {
+                            android.widget.Toast.makeText(context, "Syncing Clipboard ($reason)...", android.widget.Toast.LENGTH_SHORT).show()
+                            siloService.sendClipboard(text)
+                        }
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+        }
+
+        val listener = android.content.ClipboardManager.OnPrimaryClipChangedListener {
+            attemptClipboardSync("changed")
+        }
+        clipboardManager?.addPrimaryClipChangedListener(listener)
+
+        onDispose {
+            clipboardManager?.removePrimaryClipChangedListener(listener)
+        }
+    }
+
+    val view = androidx.compose.ui.platform.LocalView.current
+    DisposableEffect(view) {
+        val focusListener = android.view.ViewTreeObserver.OnWindowFocusChangeListener { hasFocus ->
+            if (hasFocus) {
+                val clipboardManager = context.getSystemService(Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
+                if (siloService.uiState.value.connectedSession != null) {
+                    try {
+                        val clip = clipboardManager?.primaryClip
+                        if (clip != null && clip.itemCount > 0) {
+                            val text = clip.getItemAt(0).coerceToText(context)?.toString()
+                            if (!text.isNullOrEmpty()) {
+                                siloService.sendClipboard(text)
+                            }
+                        }
+                    } catch (e: Exception) {}
+                }
+            }
+        }
+        view.viewTreeObserver.addOnWindowFocusChangeListener(focusListener)
+        onDispose {
+            view.viewTreeObserver.removeOnWindowFocusChangeListener(focusListener)
+        }
+    }
+
     Surface(modifier = Modifier.fillMaxSize(), color = SiloColors.BgDeep) {
 
         // Determine whether a full-screen overlay is active

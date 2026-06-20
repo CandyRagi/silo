@@ -93,6 +93,7 @@ object SiloProtocol {
     const val MOUSE_CLICK    = "SILO_MOUSE_CLICK"
     const val KEYBOARD_INPUT = "SILO_KEYBOARD_INPUT"
     const val CTRL_ALLOW     = "SILO_CTRL_ALLOW"
+    const val CLIPBOARD_SYNC = "SILO_CLIPBOARD"
 
     fun generatePin(): String = (100000..999999).random().toString()
 }
@@ -433,6 +434,22 @@ class SiloService : Service() {
                     _uiState.update { it.copy(desktopAllowsControl = allow) }
                 }
             }
+            SiloProtocol.CLIPBOARD_SYNC -> {
+                if (parts.size >= 2) {
+                    try {
+                        val decoded = String(android.util.Base64.decode(parts[1], android.util.Base64.NO_WRAP), Charsets.UTF_8)
+                        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
+                        if (clipboard != null) {
+                            val clip = android.content.ClipData.newPlainText("Silo Desktop", decoded)
+                            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                                try { clipboard.setPrimaryClip(clip) } catch (e: Exception) {}
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to decode clipboard sync: ${e.message}")
+                    }
+                }
+            }
         }
     }
 
@@ -643,6 +660,20 @@ class SiloService : Service() {
                 sendViaTransfer(msg, ip, port)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to send keyboard input", e)
+            }
+        }
+    }
+
+    fun sendClipboard(text: String) {
+        val sid = sessionId ?: return
+        val ip = desktopIP ?: return
+        val port = desktopPort ?: return
+        thread("clipboard") {
+            try {
+                val base64 = android.util.Base64.encodeToString(text.toByteArray(Charsets.UTF_8), android.util.Base64.NO_WRAP)
+                sendViaTransfer("${SiloProtocol.CLIPBOARD_SYNC}|$base64", ip, port)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error sending clipboard: ${e.message}")
             }
         }
     }
