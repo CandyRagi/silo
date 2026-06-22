@@ -6,6 +6,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.compose.BackHandler
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
@@ -188,6 +189,14 @@ fun SiloApp(siloService: SiloService) {
 
         // Determine whether a full-screen overlay is active
         val inSubScreen = showSettings || filesDestination != FilesDestination.Grid || commandsDestination != CommandsDestination.Grid
+
+        BackHandler(enabled = inSubScreen) {
+            when {
+                showSettings -> showSettings = false
+                filesDestination != FilesDestination.Grid -> filesDestination = FilesDestination.Grid
+                commandsDestination != CommandsDestination.Grid -> commandsDestination = CommandsDestination.Grid
+            }
+        }
 
         AnimatedContent(
             targetState  = inSubScreen,
