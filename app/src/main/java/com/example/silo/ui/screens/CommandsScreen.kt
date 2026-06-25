@@ -28,6 +28,7 @@ sealed class CommandsDestination {
     object Grid            : CommandsDestination()
     object MouseControl    : CommandsDestination()
     object KeyboardControl : CommandsDestination()
+    object CameraStream    : CommandsDestination()
 }
 
 private data class CommandItem(
@@ -46,7 +47,7 @@ fun CommandsScreen(uiState: SiloUiState, onNavigate: (CommandsDestination) -> Un
     val items = listOf(
         CommandItem("Mouse Control",   Icons.Outlined.Mouse,             SiloColors.AccentPurple,  isAllowed, { onNavigate(CommandsDestination.MouseControl) }),
         CommandItem("Keyboard Control",Icons.Outlined.Keyboard,          SiloColors.AccentViolet,  isAllowed, { onNavigate(CommandsDestination.KeyboardControl) }),
-        CommandItem("Command Prompt",  Icons.Outlined.Terminal,          Color(0xFF3B82F6),        false,     {}), // (Coming soon)
+        CommandItem("Camera Stream",   Icons.Outlined.Videocam,          Color(0xFF3B82F6),        isAllowed, { onNavigate(CommandsDestination.CameraStream) }),
         CommandItem("Power Off",       Icons.Outlined.PowerSettingsNew,  SiloColors.Red,           isAllowed, {}),
         CommandItem("Custom Command",  Icons.Outlined.Code,              Color(0xFF10B981),        isAllowed, {}),
         CommandItem("More",            Icons.Outlined.GridView,          SiloColors.TextMuted,     true,      {}),

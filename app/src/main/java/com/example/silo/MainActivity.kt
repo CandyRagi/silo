@@ -247,6 +247,10 @@ fun SiloApp(siloService: SiloService) {
                         onSendMove   = { dx, dy -> siloService.sendMouseMove(dx, dy) },
                         onSendClick  = { btn -> siloService.sendMouseClick(btn) }
                     )
+                    commandsDestination == CommandsDestination.CameraStream -> CameraStreamScreen(
+                        onBack      = { commandsDestination = CommandsDestination.Grid },
+                        onSendFrame = { bytes -> siloService.sendCameraFrame(bytes) }
+                    )
                 }
 
             } else {

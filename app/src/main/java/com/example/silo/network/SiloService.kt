@@ -94,6 +94,7 @@ object SiloProtocol {
     const val KEYBOARD_INPUT = "SILO_KEYBOARD_INPUT"
     const val CTRL_ALLOW     = "SILO_CTRL_ALLOW"
     const val CLIPBOARD_SYNC = "SILO_CLIPBOARD"
+    const val CAMERA_FRAME  = "SILO_CAM_FRAME"
 
     fun generatePin(): String = (100000..999999).random().toString()
 }
@@ -674,6 +675,24 @@ class SiloService : Service() {
                 sendViaTransfer("${SiloProtocol.CLIPBOARD_SYNC}|$base64", ip, port)
             } catch (e: Exception) {
                 Log.e(TAG, "Error sending clipboard: ${e.message}")
+            }
+        }
+    }
+
+    private val cameraExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
+    private val camHeaderBytes = "${SiloProtocol.CAMERA_FRAME}|\n".toByteArray()
+
+    fun sendCameraFrame(jpegBytes: ByteArray) {
+        val ip = desktopIP ?: return
+        val port = desktopPort ?: return
+        cameraExecutor.execute {
+            try {
+                val packet = ByteArray(camHeaderBytes.size + jpegBytes.size)
+                System.arraycopy(camHeaderBytes, 0, packet, 0, camHeaderBytes.size)
+                System.arraycopy(jpegBytes, 0, packet, camHeaderBytes.size, jpegBytes.size)
+                sendRaw(packet, ip, port)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error sending camera frame: ${e.message}")
             }
         }
     }
