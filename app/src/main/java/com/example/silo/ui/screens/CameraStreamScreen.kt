@@ -50,7 +50,7 @@ import java.util.concurrent.Executors
 @Composable
 fun CameraStreamScreen(
     onBack: () -> Unit,
-    onSendFrame: (ByteArray) -> Unit
+    onSendFrame: (ByteArray, Int) -> Unit
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -133,7 +133,7 @@ fun CameraStreamScreen(
                                         val jpegBytes = out.toByteArray()
 
                                         if (jpegBytes.size < 60000) {
-                                            onSendFrame(jpegBytes)
+                                            onSendFrame(jpegBytes, imageProxy.imageInfo.rotationDegrees)
                                         }
                                     } catch (e: Exception) {
                                         Log.e("CameraStream", "Frame error: ${e.message}")

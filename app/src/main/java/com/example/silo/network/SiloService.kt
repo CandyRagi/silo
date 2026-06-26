@@ -680,16 +680,16 @@ class SiloService : Service() {
     }
 
     private val cameraExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
-    private val camHeaderBytes = "${SiloProtocol.CAMERA_FRAME}|\n".toByteArray()
 
-    fun sendCameraFrame(jpegBytes: ByteArray) {
+    fun sendCameraFrame(jpegBytes: ByteArray, rotation: Int) {
         val ip = desktopIP ?: return
         val port = desktopPort ?: return
         cameraExecutor.execute {
             try {
-                val packet = ByteArray(camHeaderBytes.size + jpegBytes.size)
-                System.arraycopy(camHeaderBytes, 0, packet, 0, camHeaderBytes.size)
-                System.arraycopy(jpegBytes, 0, packet, camHeaderBytes.size, jpegBytes.size)
+                val header = "${SiloProtocol.CAMERA_FRAME}|$rotation|\n".toByteArray()
+                val packet = ByteArray(header.size + jpegBytes.size)
+                System.arraycopy(header, 0, packet, 0, header.size)
+                System.arraycopy(jpegBytes, 0, packet, header.size, jpegBytes.size)
                 sendRaw(packet, ip, port)
             } catch (e: Exception) {
                 Log.e(TAG, "Error sending camera frame: ${e.message}")

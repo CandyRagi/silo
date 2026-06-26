@@ -249,7 +249,7 @@ fun SiloApp(siloService: SiloService) {
                     )
                     commandsDestination == CommandsDestination.CameraStream -> CameraStreamScreen(
                         onBack      = { commandsDestination = CommandsDestination.Grid },
-                        onSendFrame = { bytes -> siloService.sendCameraFrame(bytes) }
+                        onSendFrame = { bytes, rotation -> siloService.sendCameraFrame(bytes, rotation) }
                     )
                 }
 
