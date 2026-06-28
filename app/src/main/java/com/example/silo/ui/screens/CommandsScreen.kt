@@ -29,6 +29,7 @@ sealed class CommandsDestination {
     object MouseControl    : CommandsDestination()
     object KeyboardControl : CommandsDestination()
     object CameraStream    : CommandsDestination()
+    object ScreenShare     : CommandsDestination()
 }
 
 private data class CommandItem(
@@ -48,7 +49,7 @@ fun CommandsScreen(uiState: SiloUiState, onNavigate: (CommandsDestination) -> Un
         CommandItem("Mouse Control",   Icons.Outlined.Mouse,             SiloColors.AccentPurple,  isAllowed, { onNavigate(CommandsDestination.MouseControl) }),
         CommandItem("Keyboard Control",Icons.Outlined.Keyboard,          SiloColors.AccentViolet,  isAllowed, { onNavigate(CommandsDestination.KeyboardControl) }),
         CommandItem("Camera Stream",   Icons.Outlined.Videocam,          Color(0xFF3B82F6),        isAllowed, { onNavigate(CommandsDestination.CameraStream) }),
-        CommandItem("Power Off",       Icons.Outlined.PowerSettingsNew,  SiloColors.Red,           isAllowed, {}),
+        CommandItem("Screen Share",    Icons.Outlined.Cast,              SiloColors.AccentPurple,  isAllowed, { onNavigate(CommandsDestination.ScreenShare) }),
         CommandItem("Custom Command",  Icons.Outlined.Code,              Color(0xFF10B981),        isAllowed, {}),
         CommandItem("More",            Icons.Outlined.GridView,          SiloColors.TextMuted,     true,      {}),
     )

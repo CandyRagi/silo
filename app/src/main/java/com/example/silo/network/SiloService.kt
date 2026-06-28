@@ -1,6 +1,15 @@
 package com.example.silo.network
 
 import android.content.Context
+import android.graphics.BitmapFactory
+import android.graphics.PixelFormat
+import android.graphics.Rect
+import android.hardware.display.DisplayManager
+import android.hardware.display.VirtualDisplay
+import android.media.Image
+import android.media.ImageReader
+import android.media.projection.MediaProjection
+import android.media.projection.MediaProjectionManager
 import android.net.wifi.WifiManager
 import android.text.format.Formatter
 import android.util.Log
@@ -95,6 +104,7 @@ object SiloProtocol {
     const val CTRL_ALLOW     = "SILO_CTRL_ALLOW"
     const val CLIPBOARD_SYNC = "SILO_CLIPBOARD"
     const val CAMERA_FRAME  = "SILO_CAM_FRAME"
+    const val SCREEN_FRAME  = "SILO_SCREEN_FRAME"
 
     fun generatePin(): String = (100000..999999).random().toString()
 }
@@ -172,17 +182,17 @@ class SiloService : Service() {
         thread("silo-transfer")  { runTransfer() }
     }
 
-    private fun startForegroundNotification() {
+    private fun startForegroundNotification(type: Int = android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE) {
         val channelId = "silo_channel"
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val chan = NotificationChannel(channelId, "Silo Connection", NotificationManager.IMPORTANCE_LOW)
-            val manager = getSystemService(NotificationManager::class.java)
+            val chan = android.app.NotificationChannel(channelId, "Silo Connection", android.app.NotificationManager.IMPORTANCE_LOW)
+            val manager = getSystemService(android.app.NotificationManager::class.java)
             manager.createNotificationChannel(chan)
         }
         val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            Notification.Builder(this, channelId)
+            android.app.Notification.Builder(this, channelId)
         } else {
-            Notification.Builder(this)
+            android.app.Notification.Builder(this)
         }
         val notification = builder
             .setContentTitle("Silo is running")
@@ -191,7 +201,7 @@ class SiloService : Service() {
             .build()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
+            startForeground(1, notification, type)
         } else {
             startForeground(1, notification)
         }
@@ -693,6 +703,173 @@ class SiloService : Service() {
                 sendRaw(packet, ip, port)
             } catch (e: Exception) {
                 Log.e(TAG, "Error sending camera frame: ${e.message}")
+            }
+        }
+    }
+
+    // ── Screen Sharing ─────────────────────────────────────────
+    private var mediaProjection: MediaProjection? = null
+    private var virtualDisplay: VirtualDisplay? = null
+    private var imageReader: ImageReader? = null
+    private val screenExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
+    private var screenHandlerThread: android.os.HandlerThread? = null
+    private var screenHandler: android.os.Handler? = null
+    private var displayListener: android.hardware.display.DisplayManager.DisplayListener? = null
+    private var screenHeartbeatTimer: java.util.Timer? = null
+    private var lastEncodedScreenFrame: ByteArray? = null
+
+    fun startScreenCapture(resultCode: Int, data: android.content.Intent) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForegroundNotification(
+                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE or
+                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+            )
+        }
+        
+        val projectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+        mediaProjection = projectionManager.getMediaProjection(resultCode, data)
+        
+        mediaProjection?.registerCallback(object : android.media.projection.MediaProjection.Callback() {
+            override fun onStop() {
+                Log.d(TAG, "MediaProjection stopped by system")
+            }
+        }, null)
+        
+        screenHandlerThread = android.os.HandlerThread("ScreenCaptureThread").apply { start() }
+        screenHandler = android.os.Handler(screenHandlerThread!!.looper)
+        
+        setupVirtualDisplay()
+        
+        val displayManager = getSystemService(Context.DISPLAY_SERVICE) as android.hardware.display.DisplayManager
+        displayListener = object : android.hardware.display.DisplayManager.DisplayListener {
+            var lastRotation = displayManager.getDisplay(android.view.Display.DEFAULT_DISPLAY)?.rotation
+            override fun onDisplayAdded(displayId: Int) {}
+            override fun onDisplayRemoved(displayId: Int) {}
+            override fun onDisplayChanged(displayId: Int) {
+                if (displayId == android.view.Display.DEFAULT_DISPLAY) {
+                    val rot = displayManager.getDisplay(displayId)?.rotation
+                    if (rot != lastRotation) {
+                        lastRotation = rot
+                        screenHandler?.post {
+                            setupVirtualDisplay()
+                        }
+                    }
+                }
+            }
+        }
+        displayManager.registerDisplayListener(displayListener, screenHandler)
+        
+        screenHeartbeatTimer?.cancel()
+        screenHeartbeatTimer = kotlin.concurrent.timer(period = 1000) {
+            lastEncodedScreenFrame?.let { sendScreenFrame(it) }
+        }
+    }
+    
+    private fun setupVirtualDisplay() {
+        val displayManager = getSystemService(Context.DISPLAY_SERVICE) as android.hardware.display.DisplayManager
+        val display = displayManager.getDisplay(android.view.Display.DEFAULT_DISPLAY)
+        val metrics = android.util.DisplayMetrics()
+        display.getRealMetrics(metrics)
+        
+        val maxRes = 720f
+        val scale = Math.min(maxRes / metrics.widthPixels, maxRes / metrics.heightPixels)
+        val width = (metrics.widthPixels * scale).toInt()
+        val height = (metrics.heightPixels * scale).toInt()
+        
+        val newImageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
+        
+        if (virtualDisplay == null) {
+            virtualDisplay = mediaProjection?.createVirtualDisplay(
+                "SiloScreenShare",
+                width, height, metrics.densityDpi,
+                android.hardware.display.DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+                newImageReader.surface, null, null
+            )
+        } else {
+            virtualDisplay?.resize(width, height, metrics.densityDpi)
+            virtualDisplay?.surface = newImageReader.surface
+        }
+        
+        val oldImageReader = imageReader
+        imageReader = newImageReader
+        oldImageReader?.close()
+        
+        var lastFrameTime = 0L
+        newImageReader.setOnImageAvailableListener({ reader ->
+            val now = System.currentTimeMillis()
+            if (now - lastFrameTime < 66) { // ~15 FPS target
+                val img = reader.acquireLatestImage()
+                img?.close()
+                return@setOnImageAvailableListener
+            }
+            lastFrameTime = now
+            val image = reader.acquireLatestImage() ?: return@setOnImageAvailableListener
+            
+            try {
+                val planes = image.planes
+                val buffer = planes[0].buffer
+                val pixelStride = planes[0].pixelStride
+                val rowStride = planes[0].rowStride
+                val rowPadding = rowStride - pixelStride * width
+                
+                val bitmapWidth = width + rowPadding / pixelStride
+                val bitmap = android.graphics.Bitmap.createBitmap(bitmapWidth, height, android.graphics.Bitmap.Config.ARGB_8888)
+                bitmap.copyPixelsFromBuffer(buffer)
+                
+                val cropped = android.graphics.Bitmap.createBitmap(bitmap, 0, 0, width, height)
+                val out = java.io.ByteArrayOutputStream()
+                cropped.compress(android.graphics.Bitmap.CompressFormat.JPEG, 30, out)
+                
+                lastEncodedScreenFrame = out.toByteArray()
+                sendScreenFrame(lastEncodedScreenFrame!!)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error encoding screen frame", e)
+            } finally {
+                image.close()
+            }
+        }, screenHandler)
+    }
+    
+    fun stopScreenCapture() {
+        screenHeartbeatTimer?.cancel()
+        screenHeartbeatTimer = null
+        lastEncodedScreenFrame = null
+        
+        displayListener?.let {
+            val displayManager = getSystemService(Context.DISPLAY_SERVICE) as android.hardware.display.DisplayManager
+            displayManager.unregisterDisplayListener(it)
+            displayListener = null
+        }
+        virtualDisplay?.release()
+        imageReader?.close()
+        mediaProjection?.stop()
+        
+        screenHandlerThread?.quitSafely()
+        screenHandlerThread = null
+        screenHandler = null
+        
+        virtualDisplay = null
+        imageReader = null
+        mediaProjection = null
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForegroundNotification(android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
+        }
+    }
+
+    private fun sendScreenFrame(jpegBytes: ByteArray) {
+        val ip = desktopIP ?: return
+        val port = desktopPort ?: return
+        screenExecutor.execute {
+            try {
+                // Keep the same header structure as CAMERA_FRAME so transfer.js can parse it easily
+                val header = "${SiloProtocol.SCREEN_FRAME}|0|\n".toByteArray()
+                val packet = ByteArray(header.size + jpegBytes.size)
+                System.arraycopy(header, 0, packet, 0, header.size)
+                System.arraycopy(jpegBytes, 0, packet, header.size, jpegBytes.size)
+                sendRaw(packet, ip, port)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error sending screen frame", e)
             }
         }
     }

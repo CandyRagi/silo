@@ -249,7 +249,12 @@ fun SiloApp(siloService: SiloService) {
                     )
                     commandsDestination == CommandsDestination.CameraStream -> CameraStreamScreen(
                         onBack      = { commandsDestination = CommandsDestination.Grid },
-                        onSendFrame = { bytes, rotation -> siloService.sendCameraFrame(bytes, rotation) }
+                        onSendFrame = { bytes, rot -> siloService.sendCameraFrame(bytes, rot) }
+                    )
+                    commandsDestination == CommandsDestination.ScreenShare -> ScreenShareScreen(
+                        onBack       = { commandsDestination = CommandsDestination.Grid },
+                        onStartShare = { code, data -> siloService.startScreenCapture(code, data) },
+                        onStopShare  = { siloService.stopScreenCapture() }
                     )
                 }
 
