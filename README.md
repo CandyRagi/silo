@@ -11,16 +11,37 @@ Silo Mobile is the companion Android application for Silo Desktop. It enables hi
 
 ## Installation
 
-The Silo Android application and the companion Desktop client can be downloaded from our official website.
+### Download the Application
 
-**[Download Silo Mobile](https://candyragi.github.io/silo-website)**
+1. Navigate to the official website: [Download Silo](https://candyragi.github.io/silo-website)
+2. Download the latest APK release for Android.
+3. Transfer the APK to your Android device or download it directly from your mobile browser.
+4. Tap the APK file to install it. You may be prompted to allow installations from unknown sources in your device settings.
 
-## Setup
+### Build from Source
 
-1. Download and install Silo Mobile on your Android device.
-2. Ensure you have Silo Desktop installed and running on your PC.
-3. Connect both devices to the same local network (Wi-Fi or Ethernet).
-4. Launch the Silo app, tap to scan your network, and select your PC to pair.
+For developers who wish to compile the Android application locally:
+
+1. Clone this repository to your local machine.
+2. Open the project directory using Android Studio.
+3. Allow Gradle to sync and download all necessary dependencies.
+4. Connect your Android device via USB debugging or select an emulator.
+5. Click "Run" in Android Studio to build and deploy the application to your device.
+
+## Setup Instructions
+
+1. Install and launch Silo Desktop on your Windows computer.
+2. Open the Silo Mobile application on your Android device.
+3. Ensure both the computer and the Android device are connected to the exact same local area network.
+4. On the mobile application, tap the button to scan for nearby devices.
+5. Select your computer from the list of discovered devices to initiate a connection.
+6. Accept the pairing prompt on your computer to begin transferring files or controlling the desktop.
+
+## System Requirements
+
+- Operating System: Android 8.0 (Oreo) or later
+- Network: Local Area Network connection (Wi-Fi or Ethernet)
+- Companion App: Silo Desktop installed on a target Windows machine
 
 ## License
 
