@@ -147,26 +147,7 @@ fun SettingsScreen(uiState: SiloUiState, profile: UserProfileState, onBack: () -
                     }
                 }
 
-                // Audio section
-                item {
-                    Text("Audio", fontFamily = SamsungFontFamily, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = SiloColors.TextSecondary)
-                }
-                item {
-                    SiloCard {
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text("Allow PC audio streaming", fontSize = 14.sp, color = SiloColors.TextPrimary)
-                            Switch(
-                                checked = profile.allowAudioStreaming,
-                                onCheckedChange = { profile.setAudioStreaming(it) },
-                                colors = SwitchDefaults.colors(checkedTrackColor = SiloColors.AccentPurple)
-                            )
-                        }
-                    }
-                }
+
 
                 // Network section
                 item {

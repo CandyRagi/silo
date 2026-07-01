@@ -71,7 +71,8 @@ data class SiloUiState(
     val activeTransfers:    List<TransferInfo>  = emptyList(),
     val completedTransfers: List<TransferInfo>  = emptyList(),
     val pendingSendFiles:   List<FileQueueItem> = emptyList(),
-    val desktopAllowsControl: Boolean = true
+    val desktopAllowsControl: Boolean = true,
+    val isScreenSharing:    Boolean = false
 )
 
 // ══════════════════════════════════════════════════════════
@@ -229,7 +230,10 @@ class SiloService : Service() {
         super.onTaskRemoved(rootIntent)
     }
 
+    private val handledSessions = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
     fun acceptPairing(req: PairRequest) {
+        handledSessions.add(req.sessionId)
         sessionId   = req.sessionId
         desktopIP   = req.desktopIP
         desktopPort = req.desktopPort
@@ -253,7 +257,15 @@ class SiloService : Service() {
     }
 
     fun denyPairing(req: PairRequest) {
-        sendViaTransfer("${SiloProtocol.PAIR_DENY}|${req.sessionId}|rejected", req.desktopIP, req.desktopPort)
+        handledSessions.add(req.sessionId)
+        val denyMsg = "${SiloProtocol.PAIR_DENY}|${req.sessionId}|rejected"
+        sendViaTransfer(denyMsg, req.desktopIP, req.desktopPort)
+        thread("silo-pair-deny-retry") {
+            Thread.sleep(1000)
+            sendViaTransfer(denyMsg, req.desktopIP, req.desktopPort)
+            Thread.sleep(1000)
+            sendViaTransfer(denyMsg, req.desktopIP, req.desktopPort)
+        }
         _uiState.update { it.copy(pendingPairRequest = null) }
     }
 
@@ -307,11 +319,13 @@ class SiloService : Service() {
 
                     if (msg.startsWith(SiloProtocol.DISCOVER)) {
                         val myIP  = getLocalIp()
-                        val hello = "${SiloProtocol.HELLO}|$deviceName|$myIP|${SiloProtocol.PORT_ANDROID}"
+                        val prefs = applicationContext.getSharedPreferences("silo_profile", Context.MODE_PRIVATE)
+                        val customName = prefs.getString("name", "") ?: ""
+                        val hello = "${SiloProtocol.HELLO}|$deviceName|$myIP|${SiloProtocol.PORT_ANDROID}|$customName"
                         val hBuf  = hello.toByteArray()
                         sock.send(DatagramPacket(hBuf, hBuf.size,
                             InetAddress.getByName(senderIP), SiloProtocol.PORT_DISCOVERY))
-                        Log.d(TAG, "Replied HELLO to $senderIP  myIP=$myIP")
+                        Log.d(TAG, "Replied HELLO to $senderIP  myIP=$myIP customName=$customName")
                     }
                     if (msg.startsWith(SiloProtocol.CTRL_ALLOW)) {
                         val parts = msg.split("|")
@@ -394,6 +408,7 @@ class SiloService : Service() {
                     if (reqSessionId == sessionId) return
                     val currentPending = _uiState.value.pendingPairRequest
                     if (currentPending != null && currentPending.sessionId == reqSessionId) return
+                    if (handledSessions.contains(reqSessionId)) return
 
                     val pin = parts[3]  // PIN sent by the desktop
                     // Use the explicit reply port embedded in the message (parts[4]) if present,
@@ -726,6 +741,8 @@ class SiloService : Service() {
             )
         }
         
+        _uiState.update { it.copy(isScreenSharing = true) }
+
         val projectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
         mediaProjection = projectionManager.getMediaProjection(resultCode, data)
         
@@ -847,6 +864,8 @@ class SiloService : Service() {
         screenHandlerThread?.quitSafely()
         screenHandlerThread = null
         screenHandler = null
+        
+        _uiState.update { it.copy(isScreenSharing = false) }
         
         virtualDisplay = null
         imageReader = null

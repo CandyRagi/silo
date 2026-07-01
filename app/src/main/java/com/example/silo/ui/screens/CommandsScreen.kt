@@ -1,6 +1,13 @@
 package com.example.silo.ui.screens
 
+import android.app.Activity
+import android.content.Context
+import android.content.Intent
+import android.media.projection.MediaProjectionManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
@@ -17,6 +24,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -29,29 +37,62 @@ sealed class CommandsDestination {
     object MouseControl    : CommandsDestination()
     object KeyboardControl : CommandsDestination()
     object CameraStream    : CommandsDestination()
-    object ScreenShare     : CommandsDestination()
 }
 
 private data class CommandItem(
-    val label:       String,
-    val icon:        ImageVector,
-    val accent:      Color,
-    val enabled:     Boolean,
-    val onClick:     () -> Unit
+    val label:         String,
+    val icon:          ImageVector,
+    val accent:        Color,
+    val enabled:       Boolean,
+    val isHighlighted: Boolean = false,
+    val onClick:       () -> Unit
 )
 
 @Composable
-fun CommandsScreen(uiState: SiloUiState, onNavigate: (CommandsDestination) -> Unit) {
+fun CommandsScreen(
+    uiState: SiloUiState,
+    onNavigate: (CommandsDestination) -> Unit,
+    onStartShare: (Int, Intent) -> Unit,
+    onStopShare: () -> Unit
+) {
+    val context = LocalContext.current
     val isConnected = uiState.connectedSession != null
     val isAllowed = isConnected && uiState.desktopAllowsControl
 
+    val projectionManager = remember {
+        context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+    }
+
+    val launcher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK && result.data != null) {
+            onStartShare(result.resultCode, result.data!!)
+        }
+    }
+
+    val isSharing = uiState.isScreenSharing
+
     val items = listOf(
-        CommandItem("Mouse Control",   Icons.Outlined.Mouse,             SiloColors.AccentPurple,  isAllowed, { onNavigate(CommandsDestination.MouseControl) }),
-        CommandItem("Keyboard Control",Icons.Outlined.Keyboard,          SiloColors.AccentViolet,  isAllowed, { onNavigate(CommandsDestination.KeyboardControl) }),
-        CommandItem("Camera Stream",   Icons.Outlined.Videocam,          Color(0xFF3B82F6),        isAllowed, { onNavigate(CommandsDestination.CameraStream) }),
-        CommandItem("Screen Share",    Icons.Outlined.Cast,              SiloColors.AccentPurple,  isAllowed, { onNavigate(CommandsDestination.ScreenShare) }),
-        CommandItem("Custom Command",  Icons.Outlined.Code,              Color(0xFF10B981),        isAllowed, {}),
-        CommandItem("More",            Icons.Outlined.GridView,          SiloColors.TextMuted,     true,      {}),
+        CommandItem("Mouse Control",   Icons.Outlined.Mouse,             SiloColors.AccentPurple,  isAllowed, false, { onNavigate(CommandsDestination.MouseControl) }),
+        CommandItem("Keyboard Control",Icons.Outlined.Keyboard,          SiloColors.AccentViolet,  isAllowed, false, { onNavigate(CommandsDestination.KeyboardControl) }),
+        CommandItem("Camera Stream",   Icons.Outlined.Videocam,          Color(0xFF3B82F6),        isAllowed, false, { onNavigate(CommandsDestination.CameraStream) }),
+        CommandItem(
+            label = if (isSharing) "Sharing..." else "Screen Share",
+            icon = Icons.Outlined.Cast,
+            accent = SiloColors.AccentPurple,
+            enabled = isAllowed,
+            isHighlighted = isSharing,
+            onClick = {
+                if (isSharing) {
+                    onStopShare()
+                } else {
+                    launcher.launch(projectionManager.createScreenCaptureIntent())
+                }
+            }
+        ),
+        CommandItem("Custom Command",  Icons.Outlined.Code,              Color(0xFF10B981),        isAllowed, false, {}),
+        CommandItem("More",            Icons.Outlined.GridView,          SiloColors.TextMuted,     true,      false, {}),
     )
 
     Column(
@@ -84,11 +125,37 @@ fun CommandsScreen(uiState: SiloUiState, onNavigate: (CommandsDestination) -> Un
 @Composable
 private fun CommandGridBox(item: CommandItem, modifier: Modifier, onClick: () -> Unit) {
     val alpha = if (item.enabled) 1f else 0.4f
-    
+    val backgroundBrush = if (item.isHighlighted) {
+        Brush.verticalGradient(
+            colors = listOf(
+                item.accent.copy(alpha = 0.25f),
+                item.accent.copy(alpha = 0.12f)
+            )
+        )
+    } else {
+        Brush.verticalGradient(
+            colors = listOf(
+                SiloColors.BgSurface,
+                SiloColors.BgSurface
+            )
+        )
+    }
+
+    val borderModifier = if (item.isHighlighted) {
+        Modifier.border(
+            width = 1.5.dp,
+            color = item.accent,
+            shape = RoundedCornerShape(20.dp)
+        )
+    } else {
+        Modifier
+    }
+
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(20.dp))
-            .background(SiloColors.BgSurface)
+            .background(backgroundBrush)
+            .then(borderModifier)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication        = null,

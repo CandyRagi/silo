@@ -31,7 +31,6 @@ sealed class FilesDestination {
     object ImageTransfer : FilesDestination()
     object History       : FilesDestination()
     object Placeholder4  : FilesDestination()
-    object Placeholder5  : FilesDestination()
     object Placeholder6  : FilesDestination()
 }
 
@@ -54,7 +53,6 @@ fun FilesScreen(
     val items = listOf(
         GridItem("File Transfer",  Icons.Outlined.FolderOpen,    SiloColors.AccentPurple,  isConnected, { onPickFiles("*/*") }),
         GridItem("Image Transfer", Icons.Outlined.Image,         SiloColors.AccentViolet,  isConnected, { onPickFiles("image/*") }),
-        GridItem("Audio",          Icons.Outlined.MusicNote,     Color(0xFFF59E0B),        isConnected, { onPickFiles("audio/*") }),
         GridItem("Quick Camera",   Icons.Outlined.CameraAlt,     Color(0xFF10B981),        isConnected, { onCameraCapture() }),
         GridItem("History",        Icons.Outlined.History,       Color(0xFF3B82F6),        true,        { onNavigate(FilesDestination.History) }),
         GridItem("More",           Icons.Outlined.GridView,      SiloColors.TextMuted,     true,        { onNavigate(FilesDestination.Placeholder6) }),

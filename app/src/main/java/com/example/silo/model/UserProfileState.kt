@@ -42,11 +42,4 @@ class UserProfileState(context: Context) {
             .apply()
     }
 
-    var allowAudioStreaming by mutableStateOf(prefs.getBoolean("allow_audio", true))
-        private set
-
-    fun setAudioStreaming(allow: Boolean) {
-        allowAudioStreaming = allow
-        prefs.edit().putBoolean("allow_audio", allow).apply()
-    }
 }

@@ -121,7 +121,6 @@ fun SiloApp(siloService: SiloService) {
             listOf(
                 Manifest.permission.READ_MEDIA_IMAGES,
                 Manifest.permission.READ_MEDIA_VIDEO,
-                Manifest.permission.READ_MEDIA_AUDIO,
             )
         } else {
             listOf(Manifest.permission.READ_EXTERNAL_STORAGE)
@@ -228,10 +227,6 @@ fun SiloApp(siloService: SiloService) {
                         title  = "Clipboard",
                         onBack = { filesDestination = FilesDestination.Grid }
                     )
-                    filesDestination == FilesDestination.Placeholder5 -> PlaceholderScreen(
-                        title  = "Audio",
-                        onBack = { filesDestination = FilesDestination.Grid }
-                    )
                     filesDestination == FilesDestination.Placeholder6 -> PlaceholderScreen(
                         title  = "More",
                         onBack = { filesDestination = FilesDestination.Grid }
@@ -250,11 +245,6 @@ fun SiloApp(siloService: SiloService) {
                     commandsDestination == CommandsDestination.CameraStream -> CameraStreamScreen(
                         onBack      = { commandsDestination = CommandsDestination.Grid },
                         onSendFrame = { bytes, rot -> siloService.sendCameraFrame(bytes, rot) }
-                    )
-                    commandsDestination == CommandsDestination.ScreenShare -> ScreenShareScreen(
-                        onBack       = { commandsDestination = CommandsDestination.Grid },
-                        onStartShare = { code, data -> siloService.startScreenCapture(code, data) },
-                        onStopShare  = { siloService.stopScreenCapture() }
                     )
                 }
 
@@ -304,8 +294,10 @@ fun SiloApp(siloService: SiloService) {
                                     onCameraCapture = { cameraLauncher.launch(null) }
                                 )
                                 1    -> CommandsScreen(
-                                    uiState    = uiState,
-                                    onNavigate = { commandsDestination = it }
+                                    uiState      = uiState,
+                                    onNavigate   = { commandsDestination = it },
+                                    onStartShare = { code, data -> siloService.startScreenCapture(code, data) },
+                                    onStopShare  = { siloService.stopScreenCapture() }
                                 )
                                 else -> FilesScreen(
                                     isConnected = uiState.connectedSession != null,
