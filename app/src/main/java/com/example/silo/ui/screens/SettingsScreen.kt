@@ -3,6 +3,7 @@ package com.example.silo.ui.screens
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -14,28 +15,28 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.silo.model.UserProfileState
-import com.example.silo.model.avatarPalette
 import com.example.silo.network.SiloUiState
 import com.example.silo.ui.components.InfoRow
 import com.example.silo.ui.components.SiloCard
 import com.example.silo.ui.theme.SamsungFontFamily
 import com.example.silo.ui.theme.SiloColors
+import com.example.silo.ui.theme.avatarDrawables
+import com.example.silo.ui.theme.pressableScale
 
 @Composable
 fun SettingsScreen(uiState: SiloUiState, profile: UserProfileState, onBack: () -> Unit) {
@@ -87,40 +88,15 @@ fun SettingsScreen(uiState: SiloUiState, profile: UserProfileState, onBack: () -
                             verticalAlignment     = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(14.dp)
                         ) {
-                            // Avatar
-                            Box(
+                            Image(
+                                painter            = painterResource(avatarDrawables[profile.avatarIndex]),
+                                contentDescription  = null,
+                                contentScale        = ContentScale.Crop,
                                 modifier = Modifier
                                     .size(52.dp)
-                                    .background(
-                                        if (profile.displayName.isNotEmpty()) SolidColor(profile.avatarColor) else Brush.linearGradient(
-                                            listOf(SiloColors.AccentPurple.copy(0.25f), SiloColors.AccentViolet.copy(0.1f))
-                                        ),
-                                        CircleShape
-                                    )
-                                    .border(
-                                        1.dp,
-                                        if (profile.displayName.isNotEmpty()) profile.avatarColor else SiloColors.AccentPurple.copy(0.4f),
-                                        CircleShape
-                                    ),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                if (profile.displayName.isNotEmpty()) {
-                                    Text(
-                                        text = profile.displayName.take(1).uppercase(),
-                                        color = Color.White,
-                                        fontFamily = SamsungFontFamily,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 20.sp
-                                    )
-                                } else {
-                                    Icon(
-                                        Icons.Filled.PhoneAndroid,
-                                        contentDescription = null,
-                                        tint     = SiloColors.AccentPurple,
-                                        modifier = Modifier.size(26.dp)
-                                    )
-                                }
-                            }
+                                    .clip(CircleShape)
+                                    .border(1.dp, SiloColors.BorderStrong, CircleShape)
+                            )
 
                             // Info
                             Column(modifier = Modifier.weight(1f)) {
@@ -202,7 +178,7 @@ fun SettingsScreen(uiState: SiloUiState, profile: UserProfileState, onBack: () -
 @Composable
 fun EditProfileOverlay(profile: UserProfileState, onDismiss: () -> Unit) {
     var name by remember { mutableStateOf(profile.displayName) }
-    var colorIndex by remember { mutableStateOf(profile.avatarColorIndex) }
+    var avatarIndex by remember { mutableStateOf(profile.avatarIndex) }
 
     Column(
         modifier = Modifier
@@ -231,11 +207,11 @@ fun EditProfileOverlay(profile: UserProfileState, onDismiss: () -> Unit) {
             )
             TextButton(
                 onClick = {
-                    profile.update(name.trim(), colorIndex)
+                    profile.update(name.trim(), avatarIndex)
                     onDismiss()
                 }
             ) {
-                Text("Save", fontFamily = SamsungFontFamily, fontWeight = FontWeight.SemiBold, color = SiloColors.AccentPurple)
+                Text("Save", fontFamily = SamsungFontFamily, fontWeight = FontWeight.SemiBold, color = SiloColors.Accent)
             }
         }
 
@@ -250,35 +226,20 @@ fun EditProfileOverlay(profile: UserProfileState, onDismiss: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(32.dp)
         ) {
             // Preview avatar
-            Box(
+            Image(
+                painter            = painterResource(avatarDrawables[avatarIndex]),
+                contentDescription  = null,
+                contentScale        = ContentScale.Crop,
                 modifier = Modifier
                     .size(96.dp)
-                    .background(avatarPalette[colorIndex], CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                val initial = name.trim().take(1).uppercase()
-                if (initial.isNotEmpty()) {
-                    Text(
-                        text = initial,
-                        color = Color.White,
-                        fontFamily = SamsungFontFamily,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 40.sp
-                    )
-                } else {
-                    Icon(
-                        Icons.Filled.PhoneAndroid,
-                        contentDescription = null,
-                        tint     = Color.White.copy(alpha = 0.5f),
-                        modifier = Modifier.size(40.dp)
-                    )
-                }
-            }
+                    .clip(CircleShape)
+                    .border(2.dp, SiloColors.BorderStrong, CircleShape)
+            )
 
             // Name Input
             Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 Text("Display Name", fontFamily = SamsungFontFamily, fontSize = 13.sp, color = SiloColors.TextSecondary)
-                
+
                 Surface(
                     color = SiloColors.BgSurface,
                     shape = RoundedCornerShape(12.dp),
@@ -307,36 +268,58 @@ fun EditProfileOverlay(profile: UserProfileState, onDismiss: () -> Unit) {
                 }
             }
 
-            // Color Picker
+            // Avatar Picker
             Column(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-                Text("Profile Color", fontFamily = SamsungFontFamily, fontSize = 13.sp, color = SiloColors.TextSecondary)
-                
+                Text("Profile Picture", fontFamily = SamsungFontFamily, fontSize = 13.sp, color = SiloColors.TextSecondary)
+
                 // 4 columns x 2 rows
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    val rows = avatarPalette.chunked(4)
-                    rows.forEachIndexed { rIndex, rowColors ->
+                    val rows = avatarDrawables.chunked(4)
+                    rows.forEachIndexed { rIndex, rowDrawables ->
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            rowColors.forEachIndexed { cIndex, color ->
+                            rowDrawables.forEachIndexed { cIndex, drawableRes ->
                                 val actualIndex = rIndex * 4 + cIndex
-                                val isSelected = colorIndex == actualIndex
-                                
+                                val isSelected = avatarIndex == actualIndex
+
                                 Box(
                                     modifier = Modifier
-                                        .size(48.dp)
-                                        .background(color, CircleShape)
-                                        .border(
-                                            width = if (isSelected) 3.dp else 0.dp,
-                                            color = if (isSelected) SiloColors.TextPrimary else Color.Transparent,
-                                            shape = CircleShape
-                                        )
-                                        .clickable { colorIndex = actualIndex },
+                                        .size(56.dp)
+                                        .pressableScale { avatarIndex = actualIndex },
                                     contentAlignment = Alignment.Center
                                 ) {
+                                    Image(
+                                        painter            = painterResource(drawableRes),
+                                        contentDescription  = "Avatar ${actualIndex + 1}",
+                                        contentScale        = ContentScale.Crop,
+                                        modifier = Modifier
+                                            .size(52.dp)
+                                            .clip(CircleShape)
+                                            .border(
+                                                width = if (isSelected) 3.dp else 0.dp,
+                                                color = if (isSelected) SiloColors.Accent else Color.Transparent,
+                                                shape = CircleShape
+                                            )
+                                    )
                                     if (isSelected) {
-                                        Icon(Icons.Filled.Check, contentDescription = "Selected", tint = Color.White)
+                                        Box(
+                                            modifier = Modifier
+                                                .size(20.dp)
+                                                .align(Alignment.BottomEnd)
+                                                .clip(CircleShape)
+                                                .background(SiloColors.Accent)
+                                                .border(2.dp, SiloColors.BgDeep, CircleShape),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                Icons.Filled.Check,
+                                                contentDescription = "Selected",
+                                                tint     = Color.White,
+                                                modifier = Modifier.size(12.dp)
+                                            )
+                                        }
                                     }
                                 }
                             }

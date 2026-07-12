@@ -205,7 +205,7 @@ fun CameraStreamScreen(
                 .navigationBarsPadding()
                 .size(56.dp)
                 .clip(CircleShape)
-                .background(SiloColors.BgSurface.copy(alpha = 0.7f))
+                .background(SiloColors.BgRaised.copy(alpha = 0.75f))
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null

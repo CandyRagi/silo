@@ -2,14 +2,12 @@ package com.example.silo.ui.components
 
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Person
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -17,12 +15,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.*
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.*
 import com.example.silo.model.UserProfileState
 import com.example.silo.network.SiloUiState
 import com.example.silo.ui.theme.SamsungFontFamily
 import com.example.silo.ui.theme.SiloColors
+import com.example.silo.ui.theme.avatarDrawables
 
 @Composable
 fun SiloTopHeader(uiState: SiloUiState, profile: UserProfileState, onSettings: () -> Unit) {
@@ -85,38 +86,16 @@ fun SiloTopHeader(uiState: SiloUiState, profile: UserProfileState, onSettings: (
             }
 
             // Right: profile avatar
-            Box(
+            Image(
+                painter            = painterResource(avatarDrawables[profile.avatarIndex]),
+                contentDescription = "Settings",
+                contentScale       = ContentScale.Crop,
                 modifier = Modifier
                     .size(38.dp)
                     .clip(CircleShape)
-                    .background(
-                        if (profile.displayName.isNotEmpty()) profile.avatarColor else Color.Transparent
-                    )
-                    .border(
-                        1.dp,
-                        if (profile.displayName.isNotEmpty()) profile.avatarColor else SiloColors.TextMuted.copy(alpha = 0.3f),
-                        CircleShape
-                    )
-                    .clickable { onSettings() },
-                contentAlignment = Alignment.Center
-            ) {
-                if (profile.displayName.isNotEmpty()) {
-                    Text(
-                        text = profile.displayName.take(1).uppercase(),
-                        color = Color.White,
-                        fontFamily = SamsungFontFamily,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp
-                    )
-                } else {
-                    Icon(
-                        Icons.Outlined.Person,
-                        contentDescription = "Settings",
-                        tint     = SiloColors.TextMuted,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-            }
+                    .border(1.dp, SiloColors.BorderStrong, CircleShape)
+                    .clickable { onSettings() }
+            )
         }
     }
 }

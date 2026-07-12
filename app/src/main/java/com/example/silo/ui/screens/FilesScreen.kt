@@ -1,9 +1,6 @@
 package com.example.silo.ui.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -11,7 +8,6 @@ import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -23,6 +19,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.silo.ui.theme.SamsungFontFamily
 import com.example.silo.ui.theme.SiloColors
+import com.example.silo.ui.theme.pressableScale
+import com.example.silo.ui.theme.staggeredEntrance
 
 // Sub-destinations within the Files tab — used by SiloApp for full-screen navigation
 sealed class FilesDestination {
@@ -51,11 +49,11 @@ fun FilesScreen(
     onCameraCapture: () -> Unit
 ) {
     val items = listOf(
-        GridItem("File Transfer",  Icons.Outlined.FolderOpen,    SiloColors.AccentPurple,  isConnected, { onPickFiles("*/*") }),
-        GridItem("Image Transfer", Icons.Outlined.Image,         SiloColors.AccentViolet,  isConnected, { onPickFiles("image/*") }),
-        GridItem("Quick Camera",   Icons.Outlined.CameraAlt,     Color(0xFF10B981),        isConnected, { onCameraCapture() }),
-        GridItem("History",        Icons.Outlined.History,       Color(0xFF3B82F6),        true,        { onNavigate(FilesDestination.History) }),
-        GridItem("More",           Icons.Outlined.GridView,      SiloColors.TextMuted,     true,        { onNavigate(FilesDestination.Placeholder6) }),
+        GridItem("File Transfer",  Icons.Outlined.FolderOpen,    SiloColors.Accent,      isConnected, { onPickFiles("*/*") }),
+        GridItem("Image Transfer", Icons.Outlined.Image,         SiloColors.AccentLight, isConnected, { onPickFiles("image/*") }),
+        GridItem("Quick Camera",   Icons.Outlined.CameraAlt,     SiloColors.Green,       isConnected, { onCameraCapture() }),
+        GridItem("History",        Icons.Outlined.History,       SiloColors.Amber,       true,        { onNavigate(FilesDestination.History) }),
+        GridItem("More",           Icons.Outlined.GridView,      SiloColors.TextMuted,   true,        { onNavigate(FilesDestination.Placeholder6) }),
     )
 
     Column(
@@ -65,16 +63,17 @@ fun FilesScreen(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        items.chunked(2).forEach { rowItems ->
+        items.chunked(2).forEachIndexed { rowIdx, rowItems ->
             Row(
                 modifier              = Modifier
                     .fillMaxWidth()
                     .weight(1f),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                rowItems.forEach { item ->
+                rowItems.forEachIndexed { colIdx, item ->
                     GridBox(
                         item     = item,
+                        index    = rowIdx * 2 + colIdx,
                         modifier = Modifier.weight(1f).fillMaxHeight(),
                         onClick  = item.onClick
                     )
@@ -86,19 +85,15 @@ fun FilesScreen(
 }
 
 @Composable
-private fun GridBox(item: GridItem, modifier: Modifier, onClick: () -> Unit) {
+private fun GridBox(item: GridItem, index: Int, modifier: Modifier, onClick: () -> Unit) {
     val alpha = if (item.enabled) 1f else 0.4f
-    
+
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(20.dp))
+            .staggeredEntrance(index)
+            .clip(RoundedCornerShape(18.dp))
             .background(SiloColors.BgSurface)
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication        = null,
-                enabled           = item.enabled,
-                onClick           = onClick
-            ),
+            .pressableScale(enabled = item.enabled, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
         Column(
@@ -112,7 +107,7 @@ private fun GridBox(item: GridItem, modifier: Modifier, onClick: () -> Unit) {
                         Brush.linearGradient(
                             listOf(item.accent.copy(alpha = 0.18f * alpha), item.accent.copy(alpha = 0.06f * alpha))
                         ),
-                        RoundedCornerShape(16.dp)
+                        RoundedCornerShape(14.dp)
                     ),
                 contentAlignment = Alignment.Center
             ) {

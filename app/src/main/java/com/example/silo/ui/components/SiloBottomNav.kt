@@ -1,17 +1,19 @@
 package com.example.silo.ui.components
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -28,39 +30,52 @@ fun SiloBottomNav(selectedTab: Int, onTabSelected: (Int) -> Unit) {
             .fillMaxWidth()
             .background(SiloColors.BgDeep)
             .navigationBarsPadding()
-            .height(56.dp)
+            .padding(horizontal = 12.dp, vertical = 8.dp)
+            .height(48.dp)
     ) {
-        Row(
-            modifier              = Modifier.fillMaxSize(),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment     = Alignment.CenterVertically
-        ) {
-            tabs.forEachIndexed { idx, label ->
-                val selected = selectedTab == idx
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            val tabWidth = maxWidth / tabs.size
+            val indicatorOffset by animateDpAsState(
+                targetValue   = tabWidth * selectedTab,
+                animationSpec = tween(220),
+                label         = "navIndicator"
+            )
 
-                val textColor by animateColorAsState(
-                    targetValue   = if (selected) SiloColors.TextPrimary else SiloColors.TextMuted,
-                    animationSpec = tween(200),
-                    label         = "tabColor$idx"
-                )
-                val underlineColor by animateColorAsState(
-                    targetValue   = if (selected) SiloColors.TextPrimary else Color.Transparent,
-                    animationSpec = tween(200),
-                    label         = "underline$idx"
-                )
+            // Sliding active-tab pill — mirrors desktop's .nav-item.active background
+            Box(
+                modifier = Modifier
+                    .offset(x = indicatorOffset)
+                    .width(tabWidth)
+                    .fillMaxHeight()
+                    .padding(horizontal = 4.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(SiloColors.BgRaised)
+            )
 
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication        = null
-                        ) { onTabSelected(idx) },
-                    contentAlignment = Alignment.Center
-                ) {
-                    // Column keeps the underline tightly below the text
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Row(
+                modifier              = Modifier.fillMaxSize(),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment     = Alignment.CenterVertically
+            ) {
+                tabs.forEachIndexed { idx, label ->
+                    val selected = selectedTab == idx
+
+                    val textColor by animateColorAsState(
+                        targetValue   = if (selected) SiloColors.TextPrimary else SiloColors.TextMuted,
+                        animationSpec = tween(200),
+                        label         = "tabColor$idx"
+                    )
+
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication        = null
+                            ) { onTabSelected(idx) },
+                        contentAlignment = Alignment.Center
+                    ) {
                         Text(
                             text          = label,
                             fontSize      = 14.sp,
@@ -68,16 +83,6 @@ fun SiloBottomNav(selectedTab: Int, onTabSelected: (Int) -> Unit) {
                             fontWeight    = if (selected) FontWeight.SemiBold else FontWeight.Normal,
                             color         = textColor,
                             letterSpacing = 0.sp
-                        )
-                        // Underline: same width as the text, 2px tall, 3dp gap below text
-                        Spacer(Modifier.height(3.dp))
-                        Box(
-                            modifier = Modifier
-                                .wrapContentWidth()     // match text width
-                                .height(2.dp)
-                                .background(underlineColor)
-                                // Ensure minimum visible width even for short labels
-                                .defaultMinSize(minWidth = 20.dp)
                         )
                     }
                 }

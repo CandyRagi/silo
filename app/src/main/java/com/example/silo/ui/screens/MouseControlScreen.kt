@@ -3,10 +3,12 @@ package com.example.silo.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -16,6 +18,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.silo.ui.theme.SamsungFontFamily
 import com.example.silo.ui.theme.SiloColors
+import com.example.silo.ui.theme.pressScale
 
 @Composable
 fun MouseControlScreen(
@@ -41,7 +44,7 @@ fun MouseControlScreen(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(24.dp))
+                    .clip(RoundedCornerShape(18.dp))
                     .background(SiloColors.BgSurface)
                     .pointerInput(Unit) {
                         detectTapGestures(onTap = { onMouseClick("left") })
@@ -70,13 +73,16 @@ fun MouseControlScreen(
                     .height(80.dp),
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
+                val leftInteraction = remember { MutableInteractionSource() }
                 Button(
                     onClick = { onMouseClick("left") },
+                    interactionSource = leftInteraction,
                     modifier = Modifier
                         .weight(1f)
-                        .fillMaxHeight(),
-                    shape = RoundedCornerShape(20.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = SiloColors.AccentPurple)
+                        .fillMaxHeight()
+                        .pressScale(leftInteraction),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = SiloColors.Accent)
                 ) {
                     Text(
                         "Left Click",
@@ -84,13 +90,16 @@ fun MouseControlScreen(
                         fontWeight = FontWeight.Bold
                     )
                 }
-                
+
+                val rightInteraction = remember { MutableInteractionSource() }
                 Button(
                     onClick = { onMouseClick("right") },
+                    interactionSource = rightInteraction,
                     modifier = Modifier
                         .weight(1f)
-                        .fillMaxHeight(),
-                    shape = RoundedCornerShape(20.dp),
+                        .fillMaxHeight()
+                        .pressScale(rightInteraction),
+                    shape = RoundedCornerShape(14.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = SiloColors.BgSurface)
                 ) {
                     Text(

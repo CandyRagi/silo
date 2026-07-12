@@ -32,6 +32,7 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import android.os.Build
 import kotlin.concurrent.thread
+import com.example.silo.ui.theme.avatarName
 
 // ══════════════════════════════════════════════════════════
 // Data Models
@@ -320,12 +321,14 @@ class SiloService : Service() {
                     if (msg.startsWith(SiloProtocol.DISCOVER)) {
                         val myIP  = getLocalIp()
                         val prefs = applicationContext.getSharedPreferences("silo_profile", Context.MODE_PRIVATE)
-                        val customName = prefs.getString("name", "") ?: ""
-                        val hello = "${SiloProtocol.HELLO}|$deviceName|$myIP|${SiloProtocol.PORT_ANDROID}|$customName"
+                        val customName  = prefs.getString("name", "") ?: ""
+                        val avatarIndex = prefs.getInt("avatar_index", 0)
+                        val avatar      = avatarName(avatarIndex)
+                        val hello = "${SiloProtocol.HELLO}|$deviceName|$myIP|${SiloProtocol.PORT_ANDROID}|$customName|$avatar"
                         val hBuf  = hello.toByteArray()
                         sock.send(DatagramPacket(hBuf, hBuf.size,
                             InetAddress.getByName(senderIP), SiloProtocol.PORT_DISCOVERY))
-                        Log.d(TAG, "Replied HELLO to $senderIP  myIP=$myIP customName=$customName")
+                        Log.d(TAG, "Replied HELLO to $senderIP  myIP=$myIP customName=$customName avatar=$avatar")
                     }
                     if (msg.startsWith(SiloProtocol.CTRL_ALLOW)) {
                         val parts = msg.split("|")

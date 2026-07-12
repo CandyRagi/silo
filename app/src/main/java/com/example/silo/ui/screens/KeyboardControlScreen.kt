@@ -69,7 +69,7 @@ fun KeyboardControlScreen(
                 modifier = Modifier
                     .height(trackpadHeight)
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(24.dp))
+                    .clip(RoundedCornerShape(18.dp))
                     .background(SiloColors.BgSurface)
                     .pointerInput(Unit) {
                         detectTapGestures(onTap = { onSendClick("left") })
@@ -134,7 +134,8 @@ fun KeyboardControlScreen(
                         focusRequester.requestFocus()
                         keyboardController?.show()
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = SiloColors.AccentViolet)
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = SiloColors.Accent)
                 ) {
                     Text("Show Keyboard")
                 }

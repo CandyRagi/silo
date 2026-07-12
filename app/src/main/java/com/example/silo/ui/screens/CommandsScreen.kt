@@ -8,8 +8,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -31,6 +29,8 @@ import androidx.compose.ui.unit.sp
 import com.example.silo.network.SiloUiState
 import com.example.silo.ui.theme.SamsungFontFamily
 import com.example.silo.ui.theme.SiloColors
+import com.example.silo.ui.theme.pressableScale
+import com.example.silo.ui.theme.staggeredEntrance
 
 sealed class CommandsDestination {
     object Grid            : CommandsDestination()
@@ -74,13 +74,13 @@ fun CommandsScreen(
     val isSharing = uiState.isScreenSharing
 
     val items = listOf(
-        CommandItem("Mouse Control",   Icons.Outlined.Mouse,             SiloColors.AccentPurple,  isAllowed, false, { onNavigate(CommandsDestination.MouseControl) }),
-        CommandItem("Keyboard Control",Icons.Outlined.Keyboard,          SiloColors.AccentViolet,  isAllowed, false, { onNavigate(CommandsDestination.KeyboardControl) }),
-        CommandItem("Camera Stream",   Icons.Outlined.Videocam,          Color(0xFF3B82F6),        isAllowed, false, { onNavigate(CommandsDestination.CameraStream) }),
+        CommandItem("Mouse Control",   Icons.Outlined.Mouse,             SiloColors.Accent,      isAllowed, false, { onNavigate(CommandsDestination.MouseControl) }),
+        CommandItem("Keyboard Control",Icons.Outlined.Keyboard,          SiloColors.AccentLight, isAllowed, false, { onNavigate(CommandsDestination.KeyboardControl) }),
+        CommandItem("Camera Stream",   Icons.Outlined.Videocam,          SiloColors.Amber,       isAllowed, false, { onNavigate(CommandsDestination.CameraStream) }),
         CommandItem(
             label = if (isSharing) "Sharing..." else "Screen Share",
             icon = Icons.Outlined.Cast,
-            accent = SiloColors.AccentPurple,
+            accent = SiloColors.Accent,
             enabled = isAllowed,
             isHighlighted = isSharing,
             onClick = {
@@ -91,8 +91,8 @@ fun CommandsScreen(
                 }
             }
         ),
-        CommandItem("Custom Command",  Icons.Outlined.Code,              Color(0xFF10B981),        isAllowed, false, {}),
-        CommandItem("More",            Icons.Outlined.GridView,          SiloColors.TextMuted,     true,      false, {}),
+        CommandItem("Custom Command",  Icons.Outlined.Code,              SiloColors.Green,       isAllowed, false, {}),
+        CommandItem("More",            Icons.Outlined.GridView,          SiloColors.TextMuted,   true,      false, {}),
     )
 
     Column(
@@ -102,16 +102,17 @@ fun CommandsScreen(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        items.chunked(2).forEach { rowItems ->
+        items.chunked(2).forEachIndexed { rowIdx, rowItems ->
             Row(
                 modifier              = Modifier
                     .fillMaxWidth()
                     .weight(1f),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                rowItems.forEach { item ->
+                rowItems.forEachIndexed { colIdx, item ->
                     CommandGridBox(
                         item     = item,
+                        index    = rowIdx * 2 + colIdx,
                         modifier = Modifier.weight(1f).fillMaxHeight(),
                         onClick  = item.onClick
                     )
@@ -123,7 +124,7 @@ fun CommandsScreen(
 }
 
 @Composable
-private fun CommandGridBox(item: CommandItem, modifier: Modifier, onClick: () -> Unit) {
+private fun CommandGridBox(item: CommandItem, index: Int, modifier: Modifier, onClick: () -> Unit) {
     val alpha = if (item.enabled) 1f else 0.4f
     val backgroundBrush = if (item.isHighlighted) {
         Brush.verticalGradient(
@@ -145,7 +146,7 @@ private fun CommandGridBox(item: CommandItem, modifier: Modifier, onClick: () ->
         Modifier.border(
             width = 1.5.dp,
             color = item.accent,
-            shape = RoundedCornerShape(20.dp)
+            shape = RoundedCornerShape(18.dp)
         )
     } else {
         Modifier
@@ -153,15 +154,11 @@ private fun CommandGridBox(item: CommandItem, modifier: Modifier, onClick: () ->
 
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(20.dp))
+            .staggeredEntrance(index)
+            .clip(RoundedCornerShape(18.dp))
             .background(backgroundBrush)
             .then(borderModifier)
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication        = null,
-                enabled           = item.enabled,
-                onClick           = onClick
-            ),
+            .pressableScale(enabled = item.enabled, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
         Column(
@@ -175,7 +172,7 @@ private fun CommandGridBox(item: CommandItem, modifier: Modifier, onClick: () ->
                         Brush.linearGradient(
                             listOf(item.accent.copy(alpha = 0.18f * alpha), item.accent.copy(alpha = 0.06f * alpha))
                         ),
-                        RoundedCornerShape(16.dp)
+                        RoundedCornerShape(14.dp)
                     ),
                 contentAlignment = Alignment.Center
             ) {

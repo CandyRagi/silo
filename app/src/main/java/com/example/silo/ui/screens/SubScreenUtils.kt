@@ -120,9 +120,9 @@ fun PlaceholderScreen(title: String, onBack: () -> Unit) {
                         .size(80.dp)
                         .background(
                             Brush.linearGradient(
-                                listOf(SiloColors.AccentPurple.copy(0.12f), SiloColors.AccentViolet.copy(0.06f))
+                                listOf(SiloColors.Accent.copy(0.12f), SiloColors.AccentLight.copy(0.06f))
                             ),
-                            RoundedCornerShape(24.dp)
+                            RoundedCornerShape(20.dp)
                         ),
                     contentAlignment = Alignment.Center
                 ) {

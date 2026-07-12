@@ -30,7 +30,7 @@ import android.os.IBinder
 import java.io.File
 import com.example.silo.network.SiloService
 import com.example.silo.model.UserProfileState
-import com.example.silo.ui.components.PairingBanner
+import com.example.silo.ui.components.PairingRequestOverlay
 import com.example.silo.ui.components.SiloBottomNav
 import com.example.silo.ui.components.SiloTopHeader
 import com.example.silo.ui.screens.*
@@ -197,8 +197,10 @@ fun SiloApp(siloService: SiloService) {
             }
         }
 
-        AnimatedContent(
-            targetState  = inSubScreen,
+        Box(Modifier.fillMaxSize()) {
+
+            AnimatedContent(
+                targetState  = inSubScreen,
             transitionSpec = {
                 if (targetState) {
                     slideInHorizontally(tween(280)) { it } + fadeIn(tween(220)) togetherWith
@@ -258,20 +260,6 @@ fun SiloApp(siloService: SiloService) {
                         onSettings = { showSettings = true }
                     )
 
-                    AnimatedVisibility(
-                        visible = uiState.pendingPairRequest != null,
-                        enter   = expandVertically() + fadeIn(),
-                        exit    = shrinkVertically() + fadeOut()
-                    ) {
-                        uiState.pendingPairRequest?.let { req ->
-                            PairingBanner(
-                                req      = req,
-                                onAccept = { siloService.acceptPairing(req) },
-                                onDeny   = { siloService.denyPairing(req) }
-                            )
-                        }
-                    }
-
                     Box(Modifier.weight(1f).fillMaxWidth()) {
                         AnimatedContent(
                             targetState  = selectedTab,
@@ -312,6 +300,13 @@ fun SiloApp(siloService: SiloService) {
                     SiloBottomNav(selectedTab = selectedTab, onTabSelected = { selectedTab = it })
                 }
             }
+        }
+
+            PairingRequestOverlay(
+                pendingRequest = uiState.pendingPairRequest,
+                onAccept       = { req -> siloService.acceptPairing(req) },
+                onDeny         = { req -> siloService.denyPairing(req) }
+            )
         }
     }
 }

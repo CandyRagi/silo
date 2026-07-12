@@ -1,3 +1,4 @@
+
 package com.example.silo.ui.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -6,9 +7,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
 private val SiloDarkColorScheme = darkColorScheme(
-    primary          = AccentPurple,
-    secondary        = AccentViolet,
-    tertiary         = AccentIndigo,
+    primary          = Accent,
+    secondary        = AccentDim,
+    tertiary         = AccentLight,
     background       = BgDeep,
     surface          = BgSurface,
     surfaceVariant   = BgRaised,

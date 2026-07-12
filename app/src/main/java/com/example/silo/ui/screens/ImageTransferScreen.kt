@@ -46,11 +46,11 @@ fun ImageTransferScreen(uiState: SiloUiState, onPickFiles: () -> Unit, onBack: (
                     onClick  = onPickFiles,
                     enabled  = uiState.connectedSession != null,
                     color    = Color.Transparent,
-                    shape    = RoundedCornerShape(20.dp),
+                    shape    = RoundedCornerShape(18.dp),
                     border   = BorderStroke(
                         1.5.dp,
                         if (uiState.connectedSession != null)
-                            Brush.linearGradient(listOf(SiloColors.AccentViolet, Color(0xFF818CF8)))
+                            Brush.linearGradient(listOf(SiloColors.AccentLight, SiloColors.Accent))
                         else
                             Brush.linearGradient(listOf(SiloColors.TextMuted.copy(0.3f), SiloColors.TextMuted.copy(0.3f)))
                     ),
@@ -65,12 +65,12 @@ fun ImageTransferScreen(uiState: SiloUiState, onPickFiles: () -> Unit, onBack: (
                             Modifier
                                 .size(50.dp)
                                 .background(
-                                    Brush.linearGradient(listOf(SiloColors.AccentViolet.copy(0.25f), Color(0xFF818CF8).copy(0.1f))),
+                                    Brush.linearGradient(listOf(SiloColors.AccentLight.copy(0.25f), SiloColors.Accent.copy(0.1f))),
                                     RoundedCornerShape(14.dp)
                                 ),
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Outlined.Image, null, tint = if (uiState.connectedSession != null) SiloColors.AccentViolet else SiloColors.TextMuted, modifier = Modifier.size(24.dp))
+                            Icon(Icons.Outlined.Image, null, tint = if (uiState.connectedSession != null) SiloColors.AccentLight else SiloColors.TextMuted, modifier = Modifier.size(24.dp))
                         }
                         Column(Modifier.weight(1f)) {
                             Text("Send Images", fontFamily = SamsungFontFamily, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = if (uiState.connectedSession != null) SiloColors.TextPrimary else SiloColors.TextMuted)

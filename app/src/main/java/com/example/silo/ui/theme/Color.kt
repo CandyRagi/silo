@@ -3,24 +3,26 @@ package com.example.silo.ui.theme
 import androidx.compose.ui.graphics.Color
 
 // ── Silo Brand Colors ──────────────────────────────────────
-val AccentPurple  = Color(0xFF6366F1)
-val AccentViolet  = Color(0xFFA78BFA)
-val AccentIndigo  = Color(0xFF818CF8)
+// Mirrors silo-desktop/styles.css design tokens so both apps read as one product.
 
-val BgDeep        = Color(0xFF08080F)
-val BgBase        = Color(0xFF0E0E1A)
-val BgSurface     = Color(0xFF14141F)
-val BgRaised      = Color(0xFF1A1A28)
-val BgHover       = Color(0xFF1F1F30)
+val Accent        = Color(0xFF5B7CFA)  // --accent
+val AccentDim     = Color(0xFF4A63C9)  // --accent-dim
+val AccentLight   = Color(0xFF91A8FC)  // badge tint used on desktop's send badge
 
-val TextPrimary   = Color(0xFFF1F1F8)
-val TextSecondary = Color(0xFF9090B0)
-val TextMuted     = Color(0xFF55556A)
+val BgDeep        = Color(0xFF0A0A0B)  // --bg-deep
+val BgBase        = Color(0xFF101012)  // --bg-base
+val BgSurface     = Color(0xFF151517)  // --bg-surface
+val BgRaised      = Color(0xFF1B1B1E)  // --bg-raised
+val BgHover       = Color(0xFF222225)  // --bg-hover
 
-val GreenSuccess  = Color(0xFF22C55E)
-val RedError      = Color(0xFFEF4444)
-val AmberWarn     = Color(0xFFF59E0B)
-val BlueSky       = Color(0xFF3B82F6)
+val TextPrimary   = Color(0xFFEEEEF0)  // --text-primary
+val TextSecondary = Color(0xFF8C8C94)  // --text-secondary
+val TextMuted     = Color(0xFF55555C)  // --text-muted
 
-val Border        = Color(0x12FFFFFF)
-val BorderAccent  = Color(0x66636CF1)
+val GreenSuccess  = Color(0xFF3FB968)  // --green
+val RedError      = Color(0xFFE5484D)  // --red
+val AmberWarn     = Color(0xFFD29922)  // --amber
+
+val Border        = Color(0x14FFFFFF)  // --border (rgba(255,255,255,0.08))
+val BorderStrong  = Color(0x29FFFFFF)  // --border-strong (rgba(255,255,255,0.16))
+val BorderAccent  = Color(0x735B7CFA)  // --border-accent (rgba(91,124,250,0.45))

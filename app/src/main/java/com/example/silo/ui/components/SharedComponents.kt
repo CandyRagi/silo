@@ -34,7 +34,7 @@ fun SiloCard(
 ) {
     Surface(
         color           = SiloColors.BgSurface,
-        shape           = RoundedCornerShape(16.dp),
+        shape           = RoundedCornerShape(12.dp),
         border          = BorderStroke(1.dp, borderColor ?: SiloColors.BorderColor),
         tonalElevation  = 0.dp
     ) {
@@ -81,7 +81,7 @@ fun InfoRow(label: String, value: String) {
 @Composable
 fun TransferCard(transfer: TransferInfo) {
     SiloCard(borderColor = when (transfer.status) {
-        TransferStatus.COMPLETE -> if (transfer.direction == TransferDirection.SEND) SiloColors.Green.copy(alpha = 0.5f) else Color(0xFFF59E0B).copy(alpha = 0.5f)
+        TransferStatus.COMPLETE -> SiloColors.Green.copy(alpha = 0.5f)
         TransferStatus.ERROR    -> SiloColors.Red.copy(alpha = 0.3f)
         else                    -> null
     }) {
@@ -109,7 +109,7 @@ fun TransferCard(transfer: TransferInfo) {
                 val badgeColor = when (transfer.status) {
                     TransferStatus.COMPLETE -> SiloColors.Green
                     TransferStatus.ERROR    -> SiloColors.Red
-                    else                    -> SiloColors.AccentPurple
+                    else                    -> if (transfer.direction == TransferDirection.SEND) SiloColors.Accent else SiloColors.Green
                 }
                 StatusBadge(
                     label = when (transfer.status) {
@@ -131,7 +131,7 @@ fun TransferCard(transfer: TransferInfo) {
                 LinearProgressIndicator(
                     progress   = { animProgress },
                     modifier   = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)),
-                    color      = SiloColors.AccentPurple,
+                    color      = SiloColors.Accent,
                     trackColor = SiloColors.BgRaised
                 )
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {

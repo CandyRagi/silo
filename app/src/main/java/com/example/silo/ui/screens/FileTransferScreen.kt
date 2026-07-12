@@ -54,11 +54,11 @@ fun FileTransferScreen(uiState: SiloUiState, onPickFiles: () -> Unit, onBack: ()
                     onClick  = onPickFiles,
                     enabled  = uiState.connectedSession != null,
                     color    = Color.Transparent,
-                    shape    = RoundedCornerShape(20.dp),
+                    shape    = RoundedCornerShape(18.dp),
                     border   = BorderStroke(
                         1.5.dp,
                         if (uiState.connectedSession != null)
-                            Brush.linearGradient(listOf(SiloColors.AccentPurple, SiloColors.AccentViolet))
+                            Brush.linearGradient(listOf(SiloColors.Accent, SiloColors.AccentLight))
                         else
                             Brush.linearGradient(listOf(SiloColors.TextMuted.copy(0.3f), SiloColors.TextMuted.copy(0.3f)))
                     ),
@@ -73,12 +73,12 @@ fun FileTransferScreen(uiState: SiloUiState, onPickFiles: () -> Unit, onBack: ()
                             Modifier
                                 .size(50.dp)
                                 .background(
-                                    Brush.linearGradient(listOf(SiloColors.AccentPurple.copy(0.25f), SiloColors.AccentViolet.copy(0.1f))),
+                                    Brush.linearGradient(listOf(SiloColors.Accent.copy(0.25f), SiloColors.AccentLight.copy(0.1f))),
                                     RoundedCornerShape(14.dp)
                                 ),
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Filled.Upload, null, tint = if (uiState.connectedSession != null) SiloColors.AccentPurple else SiloColors.TextMuted, modifier = Modifier.size(24.dp))
+                            Icon(Icons.Filled.Upload, null, tint = if (uiState.connectedSession != null) SiloColors.Accent else SiloColors.TextMuted, modifier = Modifier.size(24.dp))
                         }
                         Column(Modifier.weight(1f)) {
                             Text("Send Files", fontFamily = SamsungFontFamily, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = if (uiState.connectedSession != null) SiloColors.TextPrimary else SiloColors.TextMuted)
@@ -103,7 +103,7 @@ fun FileTransferScreen(uiState: SiloUiState, onPickFiles: () -> Unit, onBack: ()
                                 Text(f.name, fontFamily = SamsungFontFamily, fontWeight = FontWeight.Medium, fontSize = 13.sp, color = SiloColors.TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 Text(formatBytes(f.size), fontFamily = SamsungFontFamily, fontSize = 11.sp, color = SiloColors.TextMuted)
                             }
-                            StatusBadge("Queued", SiloColors.AccentPurple)
+                            StatusBadge("Queued", SiloColors.Accent)
                         }
                     }
                 }
