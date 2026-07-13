@@ -1,22 +1,21 @@
 # Silo Mobile
 
-Silo Mobile is the companion Android application for Silo Desktop. It enables high-speed local file sharing, remote trackpad control, and low-latency camera streaming directly to your PC via UDP.
+Silo Mobile is the companion Android application for [Silo Desktop](https://github.com/CandyRagi/silo-desktop). It enables high-speed local file sharing, remote trackpad control, and low-latency camera streaming directly to your PC via UDP — with no cloud, no accounts, and no internet connection required.
 
 ## Features
 
-- Gigabit Local Transfers: Send photos, videos, and files directly to your PC at local network speeds.
-- Remote Trackpad: Turn your Android device into a low-latency remote mouse and keyboard for your computer.
-- Live Viewfinder: Stream your device camera directly to a desktop window over the local network.
-- Complete Privacy: No cloud servers, no accounts, and no data tracking. Connections are exclusively peer-to-peer over your local network.
+- **Gigabit Local Transfers** — Send photos, videos, and files directly to your PC at local network speeds.
+- **Remote Trackpad** — Turn your Android device into a low-latency remote mouse and keyboard for your computer.
+- **Live Viewfinder** — Stream your device camera directly to a desktop window over the local network.
+- **Complete Privacy** — No cloud servers, no accounts, and no data tracking. Connections are exclusively peer-to-peer over your local network.
 
 ## Installation
 
 ### Download the Application
 
-1. Navigate to the official website: [Download Silo](https://candyragi.github.io/silo-website)
-2. Download the latest APK release for Android.
-3. Transfer the APK to your Android device or download it directly from your mobile browser.
-4. Tap the APK file to install it. You may be prompted to allow installations from unknown sources in your device settings.
+1. Download the latest APK from the [v1.0.1 release](https://github.com/CandyRagi/silo/releases/tag/v1.0.1), or visit the [official website](https://candyragi.github.io/silo-website).
+2. Transfer the APK to your Android device or download it directly from your mobile browser.
+3. Tap the APK file to install it. You may be prompted to allow installations from unknown sources in your device settings.
 
 ### Build from Source
 
@@ -30,7 +29,7 @@ For developers who wish to compile the Android application locally:
 
 ## Setup Instructions
 
-1. Install and launch Silo Desktop on your Windows computer.
+1. Install and launch [Silo Desktop](https://github.com/CandyRagi/silo-desktop) on your Windows computer.
 2. Open the Silo Mobile application on your Android device.
 3. Ensure both the computer and the Android device are connected to the exact same local area network.
 4. On the mobile application, tap the button to scan for nearby devices.
@@ -39,9 +38,17 @@ For developers who wish to compile the Android application locally:
 
 ## System Requirements
 
-- Operating System: Android 8.0 (Oreo) or later
+- Operating System: Android 10 (Q) or later
 - Network: Local Area Network connection (Wi-Fi or Ethernet)
-- Companion App: Silo Desktop installed on a target Windows machine
+- Companion App: [Silo Desktop](https://github.com/CandyRagi/silo-desktop) installed on a target Windows machine
+
+## Permissions
+
+Silo Mobile requests the following device permissions, used strictly for the features described above:
+
+- **Storage / Media access** — to select and send files to your PC.
+- **Camera** — to stream the live viewfinder to your desktop.
+- **Network access** — for local peer-to-peer discovery and transfer over UDP. No internet access is required.
 
 ## License
 
