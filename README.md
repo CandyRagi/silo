@@ -1,10 +1,10 @@
 # Silo Mobile
 
-Silo Mobile is the companion Android application for [Silo Desktop](https://github.com/CandyRagi/silo-desktop). It enables high-speed local file sharing, remote trackpad control, and low-latency camera streaming directly to your PC via UDP — with no cloud, no accounts, and no internet connection required.
+Silo Mobile is the companion Android application for [Silo Desktop](https://github.com/CandyRagi/silo-desktop). It enables fast local file sharing, remote trackpad control, and low-latency camera streaming directly to your PC — with no cloud, no accounts, and no internet connection required. Files stream over TCP for reliable delivery at any size, while discovery, pairing, remote input, and camera frames use lightweight UDP.
 
 ## Features
 
-- **Gigabit Local Transfers** — Send photos, videos, and files directly to your PC at local network speeds.
+- **Reliable Local Transfers** — Send photos, videos, and files directly to your PC at local network speeds. File data streams over a dedicated TCP channel, so transfers complete intact regardless of file size.
 - **Remote Trackpad** — Turn your Android device into a low-latency remote mouse and keyboard for your computer.
 - **Live Viewfinder** — Stream your device camera directly to a desktop window over the local network.
 - **Complete Privacy** — No cloud servers, no accounts, and no data tracking. Connections are exclusively peer-to-peer over your local network.
@@ -48,7 +48,7 @@ Silo Mobile requests the following device permissions, used strictly for the fea
 
 - **Storage / Media access** — to select and send files to your PC.
 - **Camera** — to stream the live viewfinder to your desktop.
-- **Network access** — for local peer-to-peer discovery and transfer over UDP. No internet access is required.
+- **Network access** — for local peer-to-peer discovery and control over UDP and file transfer over TCP. No internet access is required.
 
 ## License
 

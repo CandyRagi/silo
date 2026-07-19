@@ -81,11 +81,13 @@ data class SiloUiState(
 // ══════════════════════════════════════════════════════════
 
 object SiloProtocol {
-    const val PORT_DISCOVERY = 41234
-    const val PORT_ANDROID   = 41236
-    const val PORT_DESKTOP   = 41235
-    const val CHUNK_SIZE     = 60 * 1024
-    const val MAX_RETRIES    = 5
+    const val PORT_DISCOVERY   = 41234
+    const val PORT_ANDROID     = 41236
+    const val PORT_DESKTOP     = 41235
+    const val PORT_DESKTOP_TCP = 41237   // desktop listens here for inbound file streams (TCP)
+    const val PORT_ANDROID_TCP = 41238   // android listens here for inbound file streams (TCP)
+    const val CHUNK_SIZE       = 60 * 1024
+    const val MAX_RETRIES      = 5
 
     const val DISCOVER       = "SILO_DISCOVER"
     const val HELLO          = "SILO_HELLO"
@@ -107,6 +109,7 @@ object SiloProtocol {
     const val CLIPBOARD_SYNC = "SILO_CLIPBOARD"
     const val CAMERA_FRAME  = "SILO_CAM_FRAME"
     const val SCREEN_FRAME  = "SILO_SCREEN_FRAME"
+    const val FILE_HEADER   = "SILO_FILE"   // TCP stream header line for a file transfer
 
     fun generatePin(): String = (100000..999999).random().toString()
 }
@@ -139,6 +142,7 @@ class SiloService : Service() {
     // Sockets
     @Volatile private var discoverySocket: DatagramSocket? = null
     @Volatile private var transferSocket:  DatagramSocket? = null
+    @Volatile private var tcpServer:       ServerSocket?   = null
 
     // Running flag
     @Volatile private var running = false
@@ -182,6 +186,7 @@ class SiloService : Service() {
         // Start two daemon threads — no coroutines, no complexity
         thread("silo-discovery") { runDiscovery(name, ip) }
         thread("silo-transfer")  { runTransfer() }
+        thread("silo-tcp")       { runTcpServer() }
     }
 
     private fun startForegroundNotification(type: Int = android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE) {
@@ -221,6 +226,7 @@ class SiloService : Service() {
         }
         try { discoverySocket?.close() } catch (_: Exception) {}
         try { transferSocket?.close()  } catch (_: Exception) {}
+        try { tcpServer?.close()       } catch (_: Exception) {}
         try { if (multicastLock.isHeld) multicastLock.release() } catch (_: Exception) {}
         stopSelf()
     }
@@ -290,7 +296,7 @@ class SiloService : Service() {
 
                 _uiState.update { it.copy(pendingSendFiles = it.pendingSendFiles +
                     FileQueueItem(name ?: "file", size ?: 0L, uri)) }
-                sendFileUDP(uri, name ?: "file", size ?: 0L, sid)
+                sendFileTCP(uri, name ?: "file", size ?: 0L, sid)
                 _uiState.update { it.copy(pendingSendFiles = it.pendingSendFiles.filterNot { q -> q.uri == uri }) }
             } catch (e: Exception) { Log.e(TAG, "sendFile error: ${e.message}", e) }
         }
@@ -490,42 +496,132 @@ class SiloService : Service() {
         updateProgress(key, t.chunks.size.toLong() * SiloProtocol.CHUNK_SIZE, progress)
     }
 
-    // ── File Send ─────────────────────────────────────────
+    // ── File Send (TCP) ───────────────────────────────────
+    // Streams the whole file over a single TCP connection. TCP handles ordering,
+    // retransmission, MTU segmentation and flow control, so there is no chunk/ACK
+    // logic — that UDP scheme was what broke on files larger than a few KB.
 
-    private fun sendFileUDP(uri: Uri, fileName: String, fileSize: Long, sid: String) {
-        val fid   = UUID.randomUUID().toString().take(8)
-        val total = ((fileSize + SiloProtocol.CHUNK_SIZE - 1) / SiloProtocol.CHUNK_SIZE).toInt().coerceAtLeast(1)
-        val key   = "$sid:$fid"
-        val dIP   = desktopIP   ?: return
-        val dPort = desktopPort ?: return
+    private fun sendFileTCP(uri: Uri, fileName: String, fileSize: Long, sid: String) {
+        val fid = UUID.randomUUID().toString().take(8)
+        val key = "$sid:$fid"
+        val dIP = desktopIP ?: return
 
         addTransfer(TransferInfo(key, sid, fid, fileName, fileSize,
             direction = TransferDirection.SEND, status = TransferStatus.IN_PROGRESS))
 
-        val startMsg = "${SiloProtocol.TRANSFER_START}|$sid|$fid|${java.net.URLEncoder.encode(fileName,"UTF-8")}|$fileSize|$total|application%2Foctet-stream"
-        sendViaTransfer(startMsg, dIP, dPort)
-        Thread.sleep(500)
+        try {
+            val socket = Socket()
+            socket.connect(InetSocketAddress(dIP, SiloProtocol.PORT_DESKTOP_TCP), 10000)
+            socket.use { s ->
+                val out    = java.io.BufferedOutputStream(s.getOutputStream())
+                val header = "${SiloProtocol.FILE_HEADER}|$sid|$fid|" +
+                        "${java.net.URLEncoder.encode(fileName, "UTF-8")}|$fileSize|application%2Foctet-stream\n"
+                out.write(header.toByteArray(Charsets.UTF_8))
 
-        val stream = contentResolver.openInputStream(uri) ?: return
-        val buf    = ByteArray(SiloProtocol.CHUNK_SIZE)
-        var idx    = 0; var sent = 0L
-
-        stream.use {
-            while (true) {
-                val read = it.read(buf)
-                if (read == -1) break
-                val header = "${SiloProtocol.CHUNK}|$sid|$fid|$idx|$total|\n".toByteArray()
-                val packet = header + buf.copyOf(read)
-                sendRaw(packet, dIP, dPort)
-                Thread.sleep(5) // small pacing delay
-                sent += read
-                updateProgress(key, sent, ((sent * 100) / fileSize).toInt())
-                idx++
+                val stream = contentResolver.openInputStream(uri) ?: run {
+                    Log.e(TAG, "sendFileTCP: cannot open $uri"); return
+                }
+                val buf     = ByteArray(64 * 1024)
+                var sent    = 0L
+                var lastPct = -1
+                stream.use { input ->
+                    while (true) {
+                        val read = input.read(buf)
+                        if (read == -1) break
+                        out.write(buf, 0, read)
+                        sent += read
+                        val pct = if (fileSize > 0) ((sent * 100) / fileSize).toInt() else 100
+                        if (pct != lastPct) { lastPct = pct; updateProgress(key, sent, pct) }
+                    }
+                }
+                out.flush()
             }
+            completeTransfer(key, fileName, fileSize)
+            Log.d(TAG, "TCP sent $fileName ($fileSize bytes)")
+        } catch (e: Exception) {
+            Log.e(TAG, "sendFileTCP error: ${e.message}", e)
         }
+    }
 
-        sendViaTransfer("${SiloProtocol.DONE}|$sid|$fid", dIP, dPort)
-        completeTransfer(key, fileName, fileSize)
+    // ── File Receive (TCP) ────────────────────────────────
+
+    private fun runTcpServer() {
+        Log.d(TAG, "TCP server thread started")
+        try {
+            val server = ServerSocket(SiloProtocol.PORT_ANDROID_TCP)
+            tcpServer = server
+            Log.d(TAG, "TCP server bound on port ${SiloProtocol.PORT_ANDROID_TCP}")
+            while (running) {
+                try {
+                    val client = server.accept()
+                    thread("silo-tcp-recv") { handleTcpClient(client) }
+                } catch (e: SocketException) {
+                    if (!running) break else Log.e(TAG, "TCP accept error: ${e.message}")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "TCP server FAILED to bind: ${e.message}", e)
+        }
+        Log.d(TAG, "TCP server thread exited")
+    }
+
+    private fun handleTcpClient(socket: Socket) {
+        try {
+            socket.use { s ->
+                val input = java.io.BufferedInputStream(s.getInputStream())
+
+                // Read the header line (up to the first '\n').
+                val headerBuf = java.io.ByteArrayOutputStream()
+                while (true) {
+                    val b = input.read()
+                    if (b == -1) { Log.w(TAG, "TCP client closed before header"); return }
+                    if (b == '\n'.code) break
+                    headerBuf.write(b)
+                }
+                val parts = headerBuf.toString("UTF-8").split("|")
+                if (parts.getOrNull(0) != SiloProtocol.FILE_HEADER || parts.size < 6) {
+                    Log.w(TAG, "TCP bad header"); return
+                }
+                val sid      = parts[1]
+                val fid      = parts[2]
+                val fileName = decodeUrl(parts[3])
+                val fileSize = parts[4].toLongOrNull() ?: 0L
+                val key      = "$sid:$fid"
+
+                addTransfer(TransferInfo(key, sid, fid, fileName, fileSize,
+                    direction = TransferDirection.RECEIVE, status = TransferStatus.IN_PROGRESS))
+
+                val dir  = android.os.Environment.getExternalStoragePublicDirectory(
+                    android.os.Environment.DIRECTORY_DOWNLOADS)
+                val outFile = java.io.File(dir, "Silo_$fileName")
+
+                val buf      = ByteArray(64 * 1024)
+                var received = 0L
+                var lastPct  = -1
+                java.io.FileOutputStream(outFile).use { fos ->
+                    while (received < fileSize) {
+                        val toRead = minOf(buf.size.toLong(), fileSize - received).toInt()
+                        val n = input.read(buf, 0, toRead)
+                        if (n == -1) break
+                        fos.write(buf, 0, n)
+                        received += n
+                        val pct = if (fileSize > 0) ((received * 100) / fileSize).toInt() else 100
+                        if (pct != lastPct) { lastPct = pct; updateProgress(key, received, pct) }
+                    }
+                }
+
+                if (received >= fileSize) {
+                    android.media.MediaScannerConnection.scanFile(this, arrayOf(outFile.absolutePath), null, null)
+                    completeTransfer(key, fileName, fileSize)
+                    Log.d(TAG, "TCP received $fileName -> ${outFile.absolutePath}")
+                } else {
+                    Log.w(TAG, "TCP receive incomplete: $received/$fileSize for $fileName")
+                    try { outFile.delete() } catch (_: Exception) {}
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "handleTcpClient error: ${e.message}", e)
+        }
     }
 
     // ── File Assembly ─────────────────────────────────────
